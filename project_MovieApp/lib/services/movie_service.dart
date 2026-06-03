@@ -33,11 +33,9 @@ class MovieService {
     }
     return null;
   }
-  // Thêm vào trong class MovieService ở file lib/services/movie_service.dart
 
   Future<List<Movie>> searchMovies(String keyword) async {
     try {
-      // API tìm kiếm chính thức của phimapi.com
       final url = Uri.parse('${ApiConstants.baseUrl}/v1/api/tim-kiem?keyword=$keyword&limit=20');
       final response = await http.get(url);
 
@@ -46,8 +44,6 @@ class MovieService {
         if (data['status'] == 'success' || data['data'] != null) {
           final List items = data['data']['items'] ?? [];
 
-          // API kết quả tìm kiếm trả về đường dẫn ảnh gốc trực tiếp (không qua image.php)
-          // Nên chúng ta bóc tách map dữ liệu tương thích với Model Movie của bạn
           return items.map((json) {
             return Movie(
               name: json['name'] ?? '',
@@ -64,31 +60,44 @@ class MovieService {
     }
     return [];
   }
-  // Thêm vào trong class MovieService ở file lib/services/movie_service.dart
 
-  Future<List<Movie>> fetchMoviesByCategory(String categorySlug, int page) async {
+  Future<Map<String, dynamic>> fetchMoviesByCategory(String categorySlug, int page) async {
     try {
-      final url = Uri.parse('${ApiConstants.baseUrl}/v1/api/the-loai/$categorySlug?page=$page');
+      final url = Uri.parse('${ApiConstants.categoryDetail(categorySlug)}?page=$page');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['status'] == 'success') {
-          final List items = data['data']['items'] ?? [];
-          return items.map((json) {
-            return Movie(
-              name: json['name'] ?? '',
-              slug: json['slug'] ?? '',
-              thumbUrl: json['thumb_url'] ?? '',
-              posterUrl: json['poster_url'] ?? '',
-              year: json['year'] ?? 0,
-            );
-          }).toList();
+        
+        List items = [];
+        int totalPages = 1;
+        
+        if (data['data'] != null && data['data']['items'] != null) {
+          items = data['data']['items'];
+          totalPages = data['data']['params']?['pagination']?['totalPages'] ?? 1;
+        } else if (data['items'] != null) {
+          items = data['items'];
+          totalPages = data['params']?['pagination']?['totalPages'] ?? 1;
         }
+
+        final movies = items.map((json) {
+          return Movie(
+            name: json['name'] ?? '',
+            slug: json['slug'] ?? '',
+            thumbUrl: json['thumb_url'] ?? '',
+            posterUrl: json['poster_url'] ?? '',
+            year: json['year'] ?? 0,
+          );
+        }).toList();
+        
+        return {
+          'movies': movies,
+          'totalPages': totalPages,
+        };
       }
     } catch (e) {
       print("Lỗi fetchMoviesByCategory: $e");
     }
-    return [];
+    return {'movies': <Movie>[], 'totalPages': 1};
   }
 }
