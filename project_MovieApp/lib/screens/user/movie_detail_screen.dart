@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:intl/intl.dart';
 import '../../models/movie.dart';
 import '../../providers/movie_provider.dart';
+import '../../providers/player_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/review_provider.dart';
+import '../../models/review.dart';
 import '../../constants/api_constants.dart';
+import '../../widgets/movie_card.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final Movie movie;
-
   const MovieDetailScreen({super.key, required this.movie});
 
   @override
@@ -16,263 +22,201 @@ class MovieDetailScreen extends StatefulWidget {
 }
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
-  int _selectedServerIndex = 0;
-  int _selectedEpisodeIndex = 0;
-  
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
-  bool _isPlayerInitialized = false;
-  bool _isBuffering = false;
   bool _isDescriptionExpanded = false;
+  final Map<String, bool> _expandedReplies = {}; // Lưu trạng thái ẩn/hiện reply cho từng user review
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() =>
-        Provider.of<MovieProvider>(context, listen: false)
-            .loadMovieDetail(widget.movie.slug));
-  }
-
-  @override
-  void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initializePlayer(String url) async {
-    setState(() {
-      _isBuffering = true;
-      _isPlayerInitialized = false;
+    Future.microtask(() {
+      final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+      movieProvider.loadMovieDetail(widget.movie.slug);
+      Provider.of<ReviewProvider>(context, listen: false).fetchReviews(widget.movie.slug);
     });
+  }
 
-    try {
-      // Giải phóng controller cũ
-      await _videoPlayerController?.dispose();
-      _chewieController?.dispose();
+  void _playEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
+    if (episodes.isEmpty) return;
+    if (svIdx >= episodes.length) return;
+    final server = episodes[svIdx];
+    if (epIdx >= server.serverData.length) return;
 
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
-      await _videoPlayerController!.initialize();
-      
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: true,
-        looping: false,
-        aspectRatio: 16 / 9,
-        showControls: true,
-        placeholder: Container(color: Colors.black),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.amber,
-          handleColor: Colors.amber,
-          bufferedColor: Colors.white24,
-          backgroundColor: Colors.white10,
-        ),
-      );
-
-      setState(() {
-        _isPlayerInitialized = true;
-        _isBuffering = false;
-      });
-    } catch (e) {
-      debugPrint("Error initializing player: $e");
-      setState(() => _isBuffering = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Lỗi: Trình duyệt không hỗ trợ định dạng video này hoặc lỗi kết nối.")),
+    final episode = server.serverData[epIdx];
+    context.read<PlayerProvider>().setVideo(
+          widget.movie,
+          episode.linkM3u8,
+          episode.name,
+          epIdx: epIdx,
+          svIdx: svIdx,
         );
-      }
-    }
-  }
-
-  void _playCurrentEpisode(List<EpisodeServer> episodes) {
-    if (episodes.isEmpty) return;
-    
-    final server = episodes[_selectedServerIndex];
-    if (server.serverData.isEmpty) return;
-    
-    final episode = server.serverData[_selectedEpisodeIndex];
-    _initializePlayer(episode.linkM3u8);
-  }
-
-  void _nextEpisode(List<EpisodeServer> episodes) {
-    if (episodes.isEmpty) return;
-    final server = episodes[_selectedServerIndex];
-    if (_selectedEpisodeIndex < server.serverData.length - 1) {
-      setState(() => _selectedEpisodeIndex++);
-      _playCurrentEpisode(episodes);
-    }
-  }
-
-  void _prevEpisode(List<EpisodeServer> episodes) {
-    if (episodes.isEmpty) return;
-    if (_selectedEpisodeIndex > 0) {
-      setState(() => _selectedEpisodeIndex--);
-      _playCurrentEpisode(episodes);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      body: Consumer<MovieProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoadingDetail) {
-            return const Center(child: CircularProgressIndicator(color: Colors.amber));
-          }
+    final player = context.watch<PlayerProvider>();
+    final topPadding = MediaQuery.of(context).padding.top;
 
-          final movieInfo = provider.movieDetailData;
-          if (movieInfo == null) {
-            return const Center(
-              child: Text("Không thể tải thông tin.", style: TextStyle(color: Colors.white)),
-            );
-          }
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          context.read<PlayerProvider>().closePlayer();
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: const Color(0xFF0F0F0F),
+        body: Consumer<MovieProvider>(
+          builder: (context, provider, child) {
+            if (provider.isLoadingDetail) {
+              return const Center(child: CircularProgressIndicator(color: Colors.amber));
+            }
 
-          final categories = movieInfo['category'] as List? ?? [];
-          final genres = categories.map((c) => c['name']).join(', ');
-          
-          String actors = "Đang cập nhật";
-          if (movieInfo['actor'] is List) {
-             actors = (movieInfo['actor'] as List).join(', ');
-          }
-          
-          String directors = "Đang cập nhật";
-          if (movieInfo['director'] is List) {
-             directors = (movieInfo['director'] as List).join(', ');
-          }
+            final movieInfo = provider.movieDetailData;
+            if (movieInfo == null) {
+              return const Center(
+                  child: Text("Lỗi tải thông tin", style: TextStyle(color: Colors.white)));
+            }
 
-          final episodeTotal = movieInfo['episode_total'] ?? "??";
+            final genres = (movieInfo['category'] as List? ?? []).map((c) => c['name']).join(', ');
+            final actors = (movieInfo['actor'] as List?)?.join(', ') ?? "Đang cập nhật";
+            final directors = (movieInfo['director'] as List?)?.join(', ') ?? "Đang cập nhật";
+            final episodeTotal = movieInfo['episode_total'] ?? "??";
 
-          return Column(
-            children: [
-              _buildPlayerHeader(context, movieInfo, provider.episodes),
-              Expanded(
-                child: DefaultTabController(
-                  length: 4,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: _buildMovieInfoSection(movieInfo, provider, genres),
-                      ),
-                      const TabBar(
-                        isScrollable: true,
-                        tabAlignment: TabAlignment.start,
-                        indicatorColor: Colors.amber,
-                        indicatorSize: TabBarIndicatorSize.label,
-                        labelColor: Colors.amber,
-                        unselectedLabelColor: Colors.grey,
-                        labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        tabs: [
-                          Tab(text: "Giới thiệu"),
-                          Tab(text: "Tập phim"),
-                          Tab(text: "Đánh giá"),
-                          Tab(text: "Liên quan"),
-                        ],
-                      ),
-                      Expanded(
-                        child: TabBarView(
+            return Column(
+              children: [
+                // HEADER AREA
+                Container(
+                  width: double.infinity,
+                  color: Colors.black,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      children: [
+                        if (player.currentMovie?.slug == widget.movie.slug &&
+                            player.chewieController != null)
+                          Positioned.fill(
+                            child: Chewie(controller: player.chewieController!),
+                          )
+                        else
+                          Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                ApiConstants.getImageUrl(movieInfo['thumb_url'] ?? ""),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.grey[900],
+                                  child: const Icon(Icons.movie, color: Colors.white24, size: 50),
+                                ),
+                              ),
+                              Container(color: Colors.black26),
+                              Center(
+                                child: IconButton(
+                                  icon: const Icon(Icons.play_circle_fill,
+                                      color: Colors.amber, size: 64),
+                                  onPressed: () => _playEpisode(provider.episodes, 0, 0),
+                                ),
+                              ),
+                            ],
+                          ),
+                        Positioned(
+                          top: topPadding > 0 ? topPadding : 20,
+                          left: 10,
+                          child: CircleAvatar(
+                            backgroundColor: Colors.black45,
+                            child: IconButton(
+                              icon: const Icon(Icons.arrow_back, color: Colors.white),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: topPadding > 0 ? topPadding : 20,
+                          right: 10,
+                          child: Consumer<MovieProvider>(
+                            builder: (context, movieProv, _) {
+                              final isFav = movieProv.isFavorite(widget.movie.slug);
+                              return CircleAvatar(
+                                backgroundColor: Colors.black45,
+                                child: IconButton(
+                                  icon: Icon(
+                                    isFav ? Icons.favorite : Icons.favorite_border,
+                                    color: isFav ? Colors.red : Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    movieProv.toggleFavorite(widget.movie);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(isFav ? "Đã xóa khỏi yêu thích" : "Đã thêm vào yêu thích"),
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // CONTENT AREA
+                Expanded(
+                  child: Consumer<ReviewProvider>(
+                    builder: (context, reviewProvider, child) {
+                      return DefaultTabController(
+                        length: 4,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildOverviewTab(movieInfo, directors, actors, episodeTotal),
-                            _buildEpisodesTab(provider),
-                            const Center(child: Text("Chưa có đánh giá", style: TextStyle(color: Colors.white70))),
-                            const Center(child: Text("Tính năng đang phát triển", style: TextStyle(color: Colors.white70))),
+                            Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: _buildMovieInfo(movieInfo, provider.episodes, player, genres),
+                            ),
+                            TabBar(
+                              isScrollable: true,
+                              tabAlignment: TabAlignment.start,
+                              indicatorColor: Colors.amber,
+                              indicatorSize: TabBarIndicatorSize.label,
+                              labelColor: Colors.amber,
+                              unselectedLabelColor: Colors.grey,
+                              tabs: [
+                                const Tab(text: "Giới thiệu"),
+                                const Tab(text: "Tập phim"),
+                                Tab(text: "Đánh giá (${reviewProvider.reviews.length})"),
+                                const Tab(text: "Liên quan"),
+                              ],
+                            ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  _buildOverviewTab(movieInfo, directors, actors, episodeTotal),
+                                  _buildEpisodesTab(provider, player),
+                                  _buildReviewsTab(reviewProvider),
+                                  _buildRelatedTab(provider),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildPlayerHeader(BuildContext context, Map<String, dynamic> movieInfo, List<EpisodeServer> episodes) {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: Stack(
-        children: [
-          // Nội dung chính: Video hoặc Ảnh bìa
-          if (_isPlayerInitialized && _chewieController != null)
-            Chewie(controller: _chewieController!)
-          else
-            GestureDetector(
-              onTap: _isBuffering ? null : () => _playCurrentEpisode(episodes),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    ApiConstants.getImageUrl(movieInfo['thumb_url'] ?? ""),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: Colors.grey[900]),
-                  ),
-                  Container(
-                    color: Colors.black.withOpacity(0.3),
-                  ),
-                  Center(
-                    child: _isBuffering 
-                      ? const CircularProgressIndicator(color: Colors.amber)
-                      : Container(
-                          padding: const EdgeInsets.all(15),
-                          decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
-                          child: const Icon(Icons.play_arrow_rounded, size: 45, color: Colors.black),
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            
-          // Nút Back (Luôn ở trên cùng)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 10,
-            child: InkWell(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-              ),
-            ),
-          ),
-          
-          // Nút Actions
-          if (!_isPlayerInitialized)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            right: 10,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(
-                    context.watch<MovieProvider>().isFavorite(widget.movie.slug) 
-                        ? Icons.favorite 
-                        : Icons.favorite_border,
-                    color: Colors.white,
-                  ),
-                  onPressed: () => context.read<MovieProvider>().toggleFavorite(widget.movie),
-                ),
-                IconButton(icon: const Icon(Icons.share_rounded, color: Colors.white), onPressed: () {}),
               ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildMovieInfoSection(Map<String, dynamic> movieInfo, MovieProvider provider, String genres) {
-    final episodes = provider.episodes;
-    final server = episodes.isNotEmpty ? episodes[_selectedServerIndex] : null;
-    final currentEpName = (server != null && server.serverData.isNotEmpty) 
-        ? server.serverData[_selectedEpisodeIndex].name 
-        : "1";
+  Widget _buildMovieInfo(Map<String, dynamic> movieInfo, List<EpisodeServer> episodes,
+      PlayerProvider player, String genres) {
+    final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
+    final currentEpName = isPlayingThis ? player.currentEpisodeName : "1";
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,33 +227,39 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             Expanded(
               child: Text(
                 movieInfo['name'] ?? "",
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                "Tập $currentEpName/${movieInfo['episode_total'] ?? "?"}",
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
+              decoration:
+                  BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(8)),
+              child: Text("Tập $currentEpName/${movieInfo['episode_total'] ?? "???"}",
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
             ),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
-            const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+            const Icon(Icons.star, color: Colors.amber, size: 16),
             const SizedBox(width: 4),
-            const Text("8.8", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(width: 15),
-            Text(
-              "${movieInfo['year']}  •  ${genres.split(',').first}  •  ${movieInfo['time'] ?? '45 phút'}",
-              style: const TextStyle(color: Colors.white60, fontSize: 14),
+            Consumer<ReviewProvider>(
+              builder: (context, revProv, _) {
+                // Nhân 2 để chuyển từ thang 5 sao sang thang điểm 10
+                final double score10 = revProv.averageRating * 2;
+                final displayRating = revProv.reviews.isEmpty ? "0.0" : score10.toStringAsFixed(1);
+                return Text(
+                  "$displayRating/10",
+                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+                );
+              },
             ),
+            const SizedBox(width: 12),
+            Text(
+                "${movieInfo['year']}  •  ${genres.split(',').first}  •  ${movieInfo['time'] ?? '45 phút'}",
+                style: const TextStyle(color: Colors.grey, fontSize: 14)),
           ],
         ),
         const SizedBox(height: 20),
@@ -317,11 +267,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: _selectedEpisodeIndex > 0 ? () => _prevEpisode(episodes) : null,
+                onPressed: (isPlayingThis && player.currentEpisodeIndex > 0)
+                    ? () => _playEpisode(
+                        episodes, player.currentServerIndex, player.currentEpisodeIndex - 1)
+                    : null,
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                  side: const BorderSide(color: Colors.white24),
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 child: const Text("← Tập trước", style: TextStyle(color: Colors.white)),
               ),
@@ -329,16 +282,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton(
-                onPressed: (server != null && _selectedEpisodeIndex < server.serverData.length - 1) 
-                    ? () => _nextEpisode(episodes) 
-                    : null,
+                onPressed: () {
+                  int nextIdx = isPlayingThis ? player.currentEpisodeIndex + 1 : 0;
+                  _playEpisode(episodes, isPlayingThis ? player.currentServerIndex : 0, nextIdx);
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
-                child: const Text("Tập tiếp →", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: const Text("Tập tiếp →",
+                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -347,61 +301,29 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _buildOverviewTab(Map<String, dynamic> movieInfo, String directors, String actors, dynamic episodeTotal) {
+  Widget _buildOverviewTab(
+      Map<String, dynamic> movieInfo, String directors, String actors, dynamic episodeTotal) {
     final String content = movieInfo['content']?.replaceAll(RegExp(r'<[^>]*>'), '') ?? "Không có mô tả.";
-    final bool isLongContent = content.length > 150;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                content,
-                maxLines: _isDescriptionExpanded ? null : 4,
-                overflow: _isDescriptionExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white70, height: 1.6, fontSize: 15),
-              ),
-              if (isLongContent)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: InkWell(
-                    onTap: () => setState(() => _isDescriptionExpanded = !_isDescriptionExpanded),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Text(
-                        _isDescriptionExpanded ? "Thu gọn" : "Xem thêm...",
-                        style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+          Text(content,
+              maxLines: _isDescriptionExpanded ? null : 4,
+              style: const TextStyle(color: Colors.white70, height: 1.5)),
+          InkWell(
+            onTap: () => setState(() => _isDescriptionExpanded = !_isDescriptionExpanded),
+            child: Text(_isDescriptionExpanded ? "Thu gọn" : "Xem thêm...",
+                style: const TextStyle(color: Colors.amber)),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _buildDetailRow("Đạo diễn:", directors),
           _buildDetailRow("Diễn viên:", actors),
           _buildDetailRow("Số tập:", "$episodeTotal tập"),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: (movieInfo['category'] as List? ?? []).map((cat) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(cat['name'], style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-          const Text("2.1M lượt xem", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
+          const Text("2.1M lượt xem",
+              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
         ],
       ),
     );
@@ -409,86 +331,581 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10.0),
+      padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: const TextStyle(color: Colors.white38, fontSize: 14)),
+          SizedBox(width: 80, child: Text(label, style: const TextStyle(color: Colors.grey))),
+          Expanded(child: Text(value, style: const TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEpisodesTab(MovieProvider provider, PlayerProvider player) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: provider.episodes.length,
+      itemBuilder: (context, sIdx) {
+        final server = provider.episodes[sIdx];
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.2),
+          itemCount: server.serverData.length,
+          itemBuilder: (context, eIdx) {
+            final isPlaying = player.currentMovie?.slug == widget.movie.slug &&
+                player.currentEpisodeIndex == eIdx &&
+                player.currentServerIndex == sIdx;
+            return GestureDetector(
+              onTap: () => _playEpisode(provider.episodes, sIdx, eIdx),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isPlaying ? Colors.amber : Colors.white10,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Text(server.serverData[eIdx].name,
+                    style: TextStyle(
+                        color: isPlaying ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold)),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildRelatedTab(MovieProvider provider) {
+    if (provider.relatedMovies.isEmpty) {
+      return const Center(
+          child: Text("Không có phim liên quan", style: TextStyle(color: Colors.white70)));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.6,
+      ),
+      itemCount: provider.relatedMovies.length,
+      itemBuilder: (context, index) {
+        return MovieCard(movie: provider.relatedMovies[index]);
+      },
+    );
+  }
+
+  Widget _buildReviewsTab(ReviewProvider reviewProvider) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+
+    // Tìm review của user hiện tại
+    final myReview = user == null
+        ? null
+        : reviewProvider.reviews.firstWhere(
+            (r) => r.userId == user.uid,
+            orElse: () => Review(
+                userId: '',
+                userName: '',
+                userEmail: '',
+                rating: 0,
+                comment: '',
+                timestamp: 0),
+          );
+
+    final bool hasReviewed = myReview != null && myReview.userId.isNotEmpty;
+
+    return Column(
+      children: [
+        if (user != null && !hasReviewed)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              onPressed: () => _showReviewDialog(null),
+              icon: const Icon(Icons.rate_review, color: Colors.black),
+              label: const Text("Viết đánh giá của bạn",
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                minimumSize: const Size(double.infinity, 45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
           ),
+        Expanded(
+          child: reviewProvider.isLoading
+              ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+              : reviewProvider.reviews.isEmpty
+                  ? const Center(
+                      child: Text("Chưa có đánh giá nào. Hãy là người đầu tiên!",
+                          style: TextStyle(color: Colors.white70)))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: reviewProvider.reviews.length,
+                      itemBuilder: (context, index) {
+                        final review = reviewProvider.reviews[index];
+                        final bool isMyReview = user != null && review.userId == user.uid;
+                        return _buildReviewItem(review, isMyReview);
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewItem(Review review, bool isMyReview) {
+    final date = DateFormat('dd/MM/yyyy').format(DateTime.fromMillisecondsSinceEpoch(review.timestamp));
+    final String firstLetter = review.userName.isNotEmpty ? review.userName[0].toUpperCase() : "?";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(isMyReview ? 0.08 : 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: isMyReview ? Border.all(color: Colors.amber.withOpacity(0.3), width: 1) : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.amber.withOpacity(0.2),
+            child: Text(firstLetter, style: const TextStyle(color: Colors.amber)),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(value, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(review.userName,
+                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    ),
+                    if (isMyReview)
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                        color: const Color(0xFF2A2A2A),
+                        onSelected: (value) async {
+                          if (value == 'edit') {
+                            _showReviewDialog(review);
+                          } else if (value == 'delete') {
+                            final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                            final user = authProvider.currentUser;
+                            if (user != null) {
+                              await Provider.of<ReviewProvider>(context, listen: false)
+                                  .deleteReview(widget.movie.slug, user.uid);
+                            }
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit, color: Colors.white, size: 18),
+                                SizedBox(width: 8),
+                                Text("Sửa", style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                                SizedBox(width: 8),
+                                Text("Xóa", style: TextStyle(color: Colors.redAccent)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+                if (isMyReview)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(date, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  ),
+                const SizedBox(height: 4),
+                RatingBarIndicator(
+                  rating: review.rating,
+                  itemBuilder: (context, index) => const Icon(Icons.star, color: Colors.amber),
+                  itemCount: 5,
+                  itemSize: 14.0,
+                  direction: Axis.horizontal,
+                ),
+                const SizedBox(height: 8),
+                Text(review.comment, style: const TextStyle(color: Colors.white, height: 1.4)),
+                const SizedBox(height: 12),
+                
+                // Nút Phản hồi
+                GestureDetector(
+                  onTap: () => _showReplyDialog(review),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.reply, color: Colors.amber, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        review.replies.isEmpty ? "Phản hồi" : "${review.replies.length} phản hồi",
+                        style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Danh sách Phản hồi (Replies)
+                if (review.replies.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Logic ẩn hiện: nếu > 2 thì cho phép thu gọn
+                        ...(_expandedReplies[review.userId] == true
+                                ? review.replies
+                                : review.replies.take(2))
+                            .map((reply) => _buildReplyItem(review, reply)),
+                        
+                        if (review.replies.length > 2)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, left: 34),
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _expandedReplies[review.userId] = !(_expandedReplies[review.userId] ?? false);
+                                });
+                              },
+                              child: Text(
+                                _expandedReplies[review.userId] == true
+                                    ? "Thu gọn"
+                                    : "Xem thêm ${review.replies.length - 2} phản hồi...",
+                                style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEpisodesTab(MovieProvider provider) {
-    if (provider.episodes.isEmpty) {
-      return const Center(child: Text("Đang cập nhật tập phim...", style: TextStyle(color: Colors.white38)));
-    }
-    
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: provider.episodes.length,
-      itemBuilder: (context, sIndex) {
-        final server = provider.episodes[sIndex];
-        return Column(
+  Widget _buildReplyItem(Review parentReview, Reply reply) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    final bool isMyReply = user != null && reply.userId == user.uid;
+    final date = DateFormat('dd/MM HH:mm').format(DateTime.fromMillisecondsSinceEpoch(reply.timestamp));
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.amber.withOpacity(0.1),
+            child: Text(
+              reply.userName.isNotEmpty ? reply.userName[0].toUpperCase() : "?",
+              style: const TextStyle(color: Colors.amber, fontSize: 10),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(reply.userName,
+                        style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                    if (isMyReply)
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_horiz, color: Colors.grey, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 80),
+                        color: const Color(0xFF2A2A2A),
+                        onSelected: (value) async {
+                          if (value == 'edit') {
+                            _showReplyDialog(parentReview, existingReply: reply);
+                          } else if (value == 'delete') {
+                            await Provider.of<ReviewProvider>(context, listen: false)
+                                .deleteReply(widget.movie.slug, parentReview.userId, reply.id);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            height: 35,
+                            child: Text("Sửa", style: TextStyle(color: Colors.white, fontSize: 13)),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            height: 35,
+                            child: Text("Xóa", style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(date, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(reply.text, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReplyDialog(Review review, {Reply? existingReply}) {
+    final commentController = TextEditingController(text: existingReply?.text ?? "");
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (provider.episodes.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
-                child: Text(
-                  "Server: ${server.serverName}",
-                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
-                ),
+            Text(
+                existingReply == null
+                    ? "Phản hồi @${review.userName}"
+                    : "Chỉnh sửa phản hồi",
+                style: const TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: commentController,
+              maxLines: 3,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Viết phản hồi của bạn...",
+                hintStyle: const TextStyle(color: Colors.grey),
+                filled: true,
+                fillColor: Colors.white12,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               ),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 2.2,
-              ),
-              itemCount: server.serverData.length,
-              itemBuilder: (context, eIndex) {
-                final episode = server.serverData[eIndex];
-                final bool isSelected = _selectedEpisodeIndex == eIndex && _selectedServerIndex == sIndex;
-                
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedServerIndex = sIndex;
-                      _selectedEpisodeIndex = eIndex;
-                    });
-                    _playCurrentEpisode(provider.episodes);
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.amber : Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      episode.name,
-                      style: TextStyle(
-                        color: isSelected ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                );
-              },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                final user = authProvider.currentUser;
+                
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Bạn cần đăng nhập để phản hồi!")),
+                  );
+                  return;
+                }
+
+                if (commentController.text.trim().isEmpty) return;
+
+                try {
+                  if (existingReply == null) {
+                    // Thêm mới
+                    await Provider.of<ReviewProvider>(context, listen: false).addReply(
+                      movieSlug: widget.movie.slug,
+                      reviewUserId: review.userId,
+                      text: commentController.text,
+                      user: user,
+                    );
+                  } else {
+                    // Cập nhật
+                    await Provider.of<ReviewProvider>(context, listen: false).updateReply(
+                      movieSlug: widget.movie.slug,
+                      reviewUserId: review.userId,
+                      replyId: existingReply.id,
+                      newText: commentController.text,
+                    );
+                  }
+                  
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Lỗi: $e"), backgroundColor: Colors.red),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                minimumSize: const Size(double.infinity, 45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              child: Text(existingReply == null ? "Gửi phản hồi" : "Cập nhật",
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 20),
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  void _showReviewDialog(Review? existingReview) {
+    double rating = existingReview?.rating ?? 5.0;
+    final commentController = TextEditingController(text: existingReview?.comment ?? "");
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(existingReview == null ? "Đánh giá phim" : "Chỉnh sửa đánh giá",
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            RatingBar.builder(
+              initialRating: rating,
+              minRating: 1,
+              direction: Axis.horizontal,
+              allowHalfRating: true,
+              itemCount: 5,
+              itemPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+              itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.amber),
+              onRatingUpdate: (val) => rating = val,
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: commentController,
+              maxLines: 3,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Cảm nhận của bạn về phim...",
+                hintStyle: const TextStyle(color: Colors.grey),
+                filled: true,
+                fillColor: Colors.white12,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                final user = authProvider.currentUser;
+                
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Bạn cần đăng nhập để đánh giá!")),
+                  );
+                  return;
+                }
+
+                try {
+                  // Gọi Provider để gửi review
+                  await Provider.of<ReviewProvider>(context, listen: false).addOrUpdateReview(
+                    movieSlug: widget.movie.slug,
+                    rating: rating,
+                    comment: commentController.text,
+                    user: user,
+                  );
+                  
+                  // Kiểm tra mounted trước khi dùng context để tránh lỗi
+                  if (!mounted) return;
+                  
+                  Navigator.of(context).pop(); // Đóng bottom sheet
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Đã gửi đánh giá thành công!"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  print("LỖI KHI NHẤN NÚT GỬI: $e");
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Lỗi: ${e.toString()}"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                minimumSize: const Size(double.infinity, 45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              child: const Text("Gửi đánh giá",
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+            if (existingReview != null) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () async {
+                  final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                  final user = authProvider.currentUser;
+                  if (user == null) return;
+
+                  try {
+                    await Provider.of<ReviewProvider>(context, listen: false)
+                        .deleteReview(widget.movie.slug, user.uid);
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Đã xóa đánh giá!")),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Lỗi khi xóa: $e"), backgroundColor: Colors.red),
+                    );
+                  }
+                },
+                child: const Text("Xóa đánh giá", style: TextStyle(color: Colors.redAccent)),
+              ),
+            ],
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 }

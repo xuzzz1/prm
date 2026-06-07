@@ -83,6 +83,14 @@ class CategoryScreen extends StatelessWidget {
       "color": Colors.cyan,
       "image": "https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=500&auto=format&fit=crop"
     },
+    {
+      "name": "Anime",
+      "slug": "nhat-ban",
+      "count": 1245,
+      "color": Colors.redAccent,
+      "isCountry": true,
+      "image": "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=500&auto=format&fit=crop"
+    },
   ];
 
   @override
@@ -155,6 +163,7 @@ class CategoryScreen extends StatelessWidget {
             builder: (context) => CategoryMoviesScreen(
               categoryName: item["name"]!,
               categorySlug: item["slug"]!,
+              isCountry: item["isCountry"] ?? false,
             ),
           ),
         );

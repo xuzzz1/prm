@@ -7,11 +7,13 @@ import '../../widgets/movie_card.dart';
 class CategoryMoviesScreen extends StatefulWidget {
   final String categoryName;
   final String categorySlug;
+  final bool isCountry; // Thêm biến để phân biệt Thể loại hay Quốc gia
 
   const CategoryMoviesScreen({
     super.key,
     required this.categoryName,
     required this.categorySlug,
+    this.isCountry = false,
   });
 
   @override
@@ -33,7 +35,14 @@ class _CategoryMoviesScreenState extends State<CategoryMoviesScreen> {
 
   Future<void> _loadCategoryMovies() async {
     setState(() => _isLoading = true);
-    final result = await _movieService.fetchMoviesByCategory(widget.categorySlug, _currentPage);
+    
+    Map<String, dynamic> result;
+    if (widget.isCountry) {
+      result = await _movieService.fetchMoviesByCountry(widget.categorySlug, _currentPage);
+    } else {
+      result = await _movieService.fetchMoviesByCategory(widget.categorySlug, _currentPage);
+    }
+
     setState(() {
       _movies = result['movies'];
       _totalPages = result['totalPages'];

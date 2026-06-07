@@ -6,10 +6,11 @@ import '../../services/movie_service.dart';
 import '../../models/movie.dart';
 import '../../widgets/movie_card.dart';
 import '../../constants/api_constants.dart';
-import '../../widgets/movie_search.dart';
 import 'category_screen.dart'; // Import Màn hình thể loại mới làm
 import 'favorite_screen.dart';
 import 'profile_screen.dart';
+import 'search_screen.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -57,7 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             onPressed: () {
-              showSearch(context: context, delegate: MovieSearch());
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SearchScreen()),
+              );
             },
             icon: const Icon(Icons.search),
           ),

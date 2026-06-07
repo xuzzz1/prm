@@ -159,6 +159,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+
+                  // Nút Bỏ qua (Tạm thời)
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const HomeScreen()),
+                      );
+                    },
+                    child: const Text(
+                      "Bỏ qua đăng nhập",
+                      style: TextStyle(color: Colors.grey, decoration: TextDecoration.underline),
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -10,6 +10,7 @@ class MovieProvider extends ChangeNotifier {
 
   Map<String, dynamic>? _movieDetailData;
   List<EpisodeServer> _episodes = [];
+  List<Movie> _relatedMovies = [];
   bool _isLoadingDetail = false;
 
   // Danh sách phim yêu thích
@@ -17,6 +18,7 @@ class MovieProvider extends ChangeNotifier {
 
   Map<String, dynamic>? get movieDetailData => _movieDetailData;
   List<EpisodeServer> get episodes => _episodes;
+  List<Movie> get relatedMovies => _relatedMovies;
   bool get isLoadingDetail => _isLoadingDetail;
   List<Movie> get favoriteMovies => _favoriteMovies;
 
@@ -25,9 +27,15 @@ class MovieProvider extends ChangeNotifier {
   }
 
   Future<void> loadMovieDetail(String slug) async {
+    // CHỐNG RELOAD: Nếu đang xem phim này rồi thì không load lại từ API
+    if (_movieDetailData != null && _movieDetailData!['slug'] == slug) {
+      return; 
+    }
+
     _isLoadingDetail = true;
     _movieDetailData = null;
     _episodes = [];
+    _relatedMovies = [];
     notifyListeners();
 
     final result = await _movieService.fetchMovieDetail(slug);
@@ -35,6 +43,17 @@ class MovieProvider extends ChangeNotifier {
       _movieDetailData = result['movie'];
       var epList = result['episodes'] as List? ?? [];
       _episodes = epList.map((e) => EpisodeServer.fromJson(e)).toList();
+
+      // Tải phim liên quan dựa trên category đầu tiên
+      final categories = _movieDetailData?['category'] as List?;
+      if (categories != null && categories.isNotEmpty) {
+        final categorySlug = categories[0]['slug'];
+        final relatedData = await _movieService.fetchMoviesByCategory(categorySlug, 1);
+        _relatedMovies = (relatedData['movies'] as List<Movie>)
+            .where((m) => m.slug != slug) // Loại bỏ phim hiện tại
+            .take(12) // Lấy tối đa 12 phim
+            .toList();
+      }
     }
 
     _isLoadingDetail = false;

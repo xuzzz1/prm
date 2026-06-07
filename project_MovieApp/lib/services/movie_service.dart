@@ -63,40 +63,52 @@ class MovieService {
 
   Future<Map<String, dynamic>> fetchMoviesByCategory(String categorySlug, int page) async {
     try {
-      final url = Uri.parse('${ApiConstants.categoryDetail(categorySlug)}?page=$page');
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        List items = [];
-        int totalPages = 1;
-        
-        if (data['data'] != null && data['data']['items'] != null) {
-          items = data['data']['items'];
-          totalPages = data['data']['params']?['pagination']?['totalPages'] ?? 1;
-        } else if (data['items'] != null) {
-          items = data['items'];
-          totalPages = data['params']?['pagination']?['totalPages'] ?? 1;
-        }
-
-        final movies = items.map((json) {
-          return Movie(
-            name: json['name'] ?? '',
-            slug: json['slug'] ?? '',
-            thumbUrl: json['thumb_url'] ?? '',
-            posterUrl: json['poster_url'] ?? '',
-            year: json['year'] ?? 0,
-          );
-        }).toList();
-        
-        return {
-          'movies': movies,
-          'totalPages': totalPages,
-        };
-      }
+      final url = Uri.parse('${ApiConstants.categoryDetail(categorySlug)}?page=$page&limit=12');
+      return _fetchMoviesFromUrl(url);
     } catch (e) {
       print("Lỗi fetchMoviesByCategory: $e");
+    }
+    return {'movies': <Movie>[], 'totalPages': 1};
+  }
+
+  Future<Map<String, dynamic>> fetchMoviesByCountry(String countrySlug, int page) async {
+    try {
+      final url = Uri.parse('https://phimapi.com/v1/api/quoc-gia/$countrySlug?page=$page&limit=12');
+      return _fetchMoviesFromUrl(url);
+    } catch (e) {
+      print("Lỗi fetchMoviesByCountry: $e");
+    }
+    return {'movies': <Movie>[], 'totalPages': 1};
+  }
+
+  // Hàm helper dùng chung để parse dữ liệu từ API v1
+  Future<Map<String, dynamic>> _fetchMoviesFromUrl(Uri url) async {
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      
+      List items = [];
+      int totalPages = 1;
+      
+      if (data['data'] != null && data['data']['items'] != null) {
+        items = data['data']['items'];
+        totalPages = data['data']['params']?['pagination']?['totalPages'] ?? 1;
+      }
+
+      final movies = items.map((json) {
+        return Movie(
+          name: json['name'] ?? '',
+          slug: json['slug'] ?? '',
+          thumbUrl: json['thumb_url'] ?? '',
+          posterUrl: json['poster_url'] ?? '',
+          year: json['year'] ?? 0,
+        );
+      }).toList();
+      
+      return {
+        'movies': movies,
+        'totalPages': totalPages,
+      };
     }
     return {'movies': <Movie>[], 'totalPages': 1};
   }
