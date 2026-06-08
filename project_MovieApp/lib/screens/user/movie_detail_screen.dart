@@ -32,6 +32,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       final movieProvider = Provider.of<MovieProvider>(context, listen: false);
       movieProvider.loadMovieDetail(widget.movie.slug);
       Provider.of<ReviewProvider>(context, listen: false).fetchReviews(widget.movie.slug);
+      
+      // Kết nối MovieProvider vào PlayerProvider để đồng bộ progress
+      context.read<PlayerProvider>().setMovieProvider(movieProvider);
     });
   }
 
@@ -42,12 +45,26 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     if (epIdx >= server.serverData.length) return;
 
     final episode = server.serverData[epIdx];
+    
+    // Lấy thông tin xem tiếp từ lịch sử
+    final history = context.read<MovieProvider>().getHistoryForMovie(widget.movie.slug);
+    Duration? startAt;
+    
+    // Nếu cùng tập phim thì mới resume (hoặc tùy bạn muốn resume bất kể tập nào)
+    if (history != null && history.episodeName == episode.name && history.position != null) {
+      startAt = Duration(seconds: history.position!);
+    }
+
+    // Lưu vào lịch sử xem phim
+    context.read<MovieProvider>().addToHistory(widget.movie, epName: episode.name);
+
     context.read<PlayerProvider>().setVideo(
           widget.movie,
           episode.linkM3u8,
           episode.name,
           epIdx: epIdx,
           svIdx: svIdx,
+          startAt: startAt,
         );
   }
 

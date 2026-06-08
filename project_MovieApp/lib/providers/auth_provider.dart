@@ -83,4 +83,57 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _auth.signOut();
   }
+
+  // --- 4. CẬP NHẬT THÔNG TIN CÁ NHÂN ---
+  Future<String?> updateProfile(String name) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      if (_auth.currentUser != null) {
+        await _auth.currentUser!.updateDisplayName(name);
+        await _auth.currentUser!.reload();
+        _user = _auth.currentUser;
+        _isLoading = false;
+        notifyListeners();
+        return null; // Thành công
+      }
+      _isLoading = false;
+      notifyListeners();
+      return "Không tìm thấy thông tin người dùng.";
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      return "Cập nhật thất bại: ${e.toString()}";
+    }
+  }
+
+  // --- 5. ĐỔI MẬT KHẨU ---
+  Future<String?> changePassword(String newPassword) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      if (_auth.currentUser != null) {
+        await _auth.currentUser!.updatePassword(newPassword);
+        _isLoading = false;
+        notifyListeners();
+        return null; // Thành công
+      }
+      _isLoading = false;
+      notifyListeners();
+      return "Không tìm thấy người dùng.";
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      if (e.code == 'requires-recent-login') {
+        return "Hành động này yêu cầu bạn phải đăng nhập lại gần đây để xác thực.";
+      }
+      return e.message ?? "Đã xảy ra lỗi khi đổi mật khẩu.";
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      return "Lỗi hệ thống: ${e.toString()}";
+    }
+  }
 }

@@ -4,6 +4,12 @@ class Movie {
   final String thumbUrl;
   final String posterUrl;
   final int year;
+  
+  // Các trường phục vụ lịch sử xem phim
+  int? position; // Vị trí đang xem (giây)
+  int? duration; // Tổng thời lượng (giây)
+  String? episodeName; // Tên tập đang xem
+  int? lastWatchedTimestamp; // Thời điểm xem cuối cùng
 
   Movie({
     required this.name,
@@ -11,6 +17,10 @@ class Movie {
     required this.thumbUrl,
     required this.posterUrl,
     required this.year,
+    this.position,
+    this.duration,
+    this.episodeName,
+    this.lastWatchedTimestamp,
   });
 
   factory Movie.fromJson(Map<String, dynamic> json) {
@@ -20,18 +30,26 @@ class Movie {
       thumbUrl: json['thumb_url'] ?? '',
       posterUrl: json['poster_url'] ?? '',
       year: json['year'] ?? 0,
+      position: json['position'],
+      duration: json['duration'],
+      episodeName: json['episode_name'],
+      lastWatchedTimestamp: json['last_watched_timestamp'],
     );
   }
-// HÀM MỚI THÊM: Chuyển dữ liệu Movie thành Map để lưu vào máy
-Map<String, dynamic> toJson() {
-  return {
-    'name': name,
-    'slug': slug,
-    'thumb_url': thumbUrl,
-    'poster_url': posterUrl,
-    'year': year,
-  };
-}
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'slug': slug,
+      'thumb_url': thumbUrl,
+      'poster_url': posterUrl,
+      'year': year,
+      'position': position,
+      'duration': duration,
+      'episode_name': episodeName,
+      'last_watched_timestamp': lastWatchedTimestamp,
+    };
+  }
 }
 
 

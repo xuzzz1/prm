@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../models/movie.dart';
+import 'movie_provider.dart';
 
 class PlayerProvider extends ChangeNotifier {
   VideoPlayerController? _videoController;
@@ -19,6 +21,9 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  Timer? _progressTimer;
+  MovieProvider? _movieProvider;
+
   // Getters
   VideoPlayerController? get videoController => _videoController;
   ChewieController? get chewieController => _chewieController;
@@ -30,12 +35,18 @@ class PlayerProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  Future<void> setVideo(Movie movie, String url, String episodeName, {int epIdx = 0, int svIdx = 0}) async {
+  void setMovieProvider(MovieProvider provider) {
+    _movieProvider = provider;
+  }
+
+  Future<void> setVideo(Movie movie, String url, String episodeName, {int epIdx = 0, int svIdx = 0, Duration? startAt}) async {
     if (_currentMovie?.slug == movie.slug && _currentEpisodeName == episodeName) {
       _isExpanded = true;
       notifyListeners();
       return;
     }
+
+    _stopProgressTimer();
 
     _isLoading = true;
     _errorMessage = null;
@@ -54,20 +65,22 @@ class PlayerProvider extends ChangeNotifier {
       _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
       await _videoController!.initialize();
 
+      // Tự động tua đến vị trí cũ nếu có
+      if (startAt != null && startAt < _videoController!.value.duration) {
+        await _videoController!.seekTo(startAt);
+      }
+
       _chewieController = ChewieController(
         videoPlayerController: _videoController!,
         autoPlay: true,
         looping: false,
-        // TỰ ĐỘNG LẤY TỈ LỆ CỦA VIDEO, KHÔNG ÉP 16/9
         aspectRatio: _videoController!.value.aspectRatio,
         showControls: true,
         placeholder: Container(color: Colors.black),
-        // CHO PHÉP XOAY NGANG KHI VÀO FULLSCREEN NATIVE
         deviceOrientationsOnEnterFullScreen: [
           DeviceOrientation.landscapeLeft,
           DeviceOrientation.landscapeRight,
         ],
-        // LUÔN TRẢ VỀ DỌC KHI THOÁT FULLSCREEN NATIVE
         deviceOrientationsAfterFullScreen: [
           DeviceOrientation.portraitUp,
         ],
@@ -75,6 +88,8 @@ class PlayerProvider extends ChangeNotifier {
       
       _videoWidget = Chewie(controller: _chewieController!);
       _isLoading = false;
+      
+      _startProgressTimer();
     } catch (e) {
       _isLoading = false;
       _errorMessage = "Không thể phát video. Vui lòng kiểm tra kết nối.";
@@ -83,9 +98,35 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _startProgressTimer() {
+    _progressTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _saveProgress();
+    });
+  }
+
+  void _stopProgressTimer() {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+  }
+
+  void _saveProgress() {
+    if (_videoController != null && _videoController!.value.isInitialized && _currentMovie != null) {
+      final position = _videoController!.value.position.inSeconds;
+      final duration = _videoController!.value.duration.inSeconds;
+      
+      if (position > 0 && duration > 0) {
+        _movieProvider?.addToHistory(
+          _currentMovie!,
+          position: position,
+          duration: duration,
+          epName: _currentEpisodeName,
+        );
+      }
+    }
+  }
+
   void toggleExpand(bool expand) {
     _isExpanded = expand;
-    // QUAN TRỌNG: Nếu thu nhỏ về Mini Player, ép màn hình về hướng dọc ngay lập tức
     if (!expand) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -95,6 +136,9 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void closePlayer() {
+    _saveProgress(); // Lưu lần cuối trước khi đóng
+    _stopProgressTimer();
+    
     _videoController?.pause();
     _videoController?.dispose();
     _chewieController?.dispose();
@@ -105,11 +149,16 @@ class PlayerProvider extends ChangeNotifier {
     _isMiniPlayerActive = false;
     _isExpanded = false;
     
-    // Đảm bảo app về hướng dọc khi tắt player
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _stopProgressTimer();
+    super.dispose();
   }
 }

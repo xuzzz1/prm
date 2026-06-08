@@ -2,11 +2,15 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/movie.dart';
 import '../services/movie_service.dart';
 
 class MovieProvider extends ChangeNotifier {
   final MovieService _movieService = MovieService();
+  final FirebaseDatabase _db = FirebaseDatabase.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   Map<String, dynamic>? _movieDetailData;
   List<EpisodeServer> _episodes = [];
@@ -15,15 +19,29 @@ class MovieProvider extends ChangeNotifier {
 
   // Danh sách phim yêu thích
   List<Movie> _favoriteMovies = [];
+  // Danh sách lịch sử xem phim
+  List<Movie> _watchHistory = [];
 
   Map<String, dynamic>? get movieDetailData => _movieDetailData;
   List<EpisodeServer> get episodes => _episodes;
   List<Movie> get relatedMovies => _relatedMovies;
   bool get isLoadingDetail => _isLoadingDetail;
   List<Movie> get favoriteMovies => _favoriteMovies;
+  List<Movie> get watchHistory => _watchHistory;
 
   MovieProvider() {
     loadFavorites(); // Tự động tải danh sách phim đã lưu khi khởi tạo app
+    loadWatchHistory(); // Tải lịch sử xem phim
+    
+    // Lắng nghe khi user đăng nhập/đăng xuất để sync Firebase
+    _auth.authStateChanges().listen((user) {
+      if (user != null) {
+        syncHistoryFromFirebase();
+      } else {
+        _watchHistory.clear();
+        notifyListeners();
+      }
+    });
   }
 
   Future<void> loadMovieDetail(String slug) async {
@@ -97,5 +115,119 @@ class MovieProvider extends ChangeNotifier {
     await prefs.setStringList('favorite_movies', encodeList);
 
     notifyListeners(); // Cập nhật lại giao diện ngay lập tức
+  }
+
+  // --- LOGIC XỬ LÝ LỊCH SỬ XEM PHIM (WATCH HISTORY) ---
+
+  // 1. Tải lịch sử từ bộ nhớ máy (Local)
+  Future<void> loadWatchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? savedList = prefs.getStringList('watch_history');
+
+    if (savedList != null) {
+      _watchHistory = savedList.map((item) {
+        return Movie.fromJson(jsonDecode(item));
+      }).toList();
+      notifyListeners();
+    }
+  }
+
+  // 2. Đồng bộ từ Firebase về Local (Sync)
+  Future<void> syncHistoryFromFirebase() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final snapshot = await _db.ref('watch_history/${user.uid}').get();
+      if (snapshot.exists) {
+        final Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
+        
+        List<Movie> firebaseHistory = [];
+        data.forEach((key, value) {
+          firebaseHistory.add(Movie.fromJson(Map<String, dynamic>.from(value)));
+        });
+
+        // Sắp xếp theo timestamp mới nhất
+        firebaseHistory.sort((a, b) => (b.lastWatchedTimestamp ?? 0).compareTo(a.lastWatchedTimestamp ?? 0));
+
+        // Merge với Local (ưu tiên cái nào có timestamp mới hơn)
+        for (var fMovie in firebaseHistory) {
+          int localIdx = _watchHistory.indexWhere((m) => m.slug == fMovie.slug);
+          if (localIdx != -1) {
+            if ((fMovie.lastWatchedTimestamp ?? 0) > (_watchHistory[localIdx].lastWatchedTimestamp ?? 0)) {
+              _watchHistory[localIdx] = fMovie;
+            }
+          } else {
+            _watchHistory.add(fMovie);
+          }
+        }
+
+        // Sắp xếp lại toàn bộ và giới hạn 20
+        _watchHistory.sort((a, b) => (b.lastWatchedTimestamp ?? 0).compareTo(a.lastWatchedTimestamp ?? 0));
+        if (_watchHistory.length > 20) {
+          _watchHistory = _watchHistory.sublist(0, 20);
+        }
+
+        await _saveLocalHistory();
+        notifyListeners();
+      }
+    } catch (e) {
+      print("Lỗi syncHistoryFromFirebase: $e");
+    }
+  }
+
+  // 3. Thêm/Cập nhật lịch sử (Local + Cloud)
+  Future<void> addToHistory(Movie movie, {int? position, int? duration, String? epName}) async {
+    movie.position = position ?? movie.position;
+    movie.duration = duration ?? movie.duration;
+    movie.episodeName = epName ?? movie.episodeName;
+    movie.lastWatchedTimestamp = DateTime.now().millisecondsSinceEpoch;
+
+    // Cập nhật Local
+    _watchHistory.removeWhere((item) => item.slug == movie.slug);
+    _watchHistory.insert(0, movie);
+    if (_watchHistory.length > 20) _watchHistory = _watchHistory.sublist(0, 20);
+    
+    await _saveLocalHistory();
+    notifyListeners();
+
+    // Cập nhật Cloud (Firebase)
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        await _db.ref('watch_history/${user.uid}/${movie.slug}').set(movie.toJson());
+      } catch (e) {
+        print("Lỗi đẩy lịch sử lên Firebase: $e");
+      }
+    }
+  }
+
+  Future<void> _saveLocalHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> encodeList = _watchHistory.map((item) => jsonEncode(item.toJson())).toList();
+    await prefs.setStringList('watch_history', encodeList);
+  }
+
+  // Lấy dữ liệu xem tiếp cho một phim cụ thể
+  Movie? getHistoryForMovie(String slug) {
+    try {
+      return _watchHistory.firstWhere((m) => m.slug == slug);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 4. Xóa toàn bộ lịch sử
+  Future<void> clearHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    _watchHistory.clear();
+    await prefs.remove('watch_history');
+    
+    final user = _auth.currentUser;
+    if (user != null) {
+      await _db.ref('watch_history/${user.uid}').remove();
+    }
+
+    notifyListeners();
   }
 }
