@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/gestures.dart';
+import 'package:provider/provider.dart';
 import '../../services/movie_service.dart';
 import '../../models/movie.dart';
+import '../../providers/movie_provider.dart';
 import '../../widgets/movie_card.dart';
 import '../../constants/api_constants.dart';
 import 'category_screen.dart'; // Import Màn hình thể loại mới làm
@@ -96,36 +98,102 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeBody() {
     return isLoading
         ? const Center(child: CircularProgressIndicator(color: Colors.red))
-        : SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-          CarouselSlider(
-            options: CarouselOptions(
-              height: 200,
-              autoPlay: true,
-              enlargeCenterPage: true,
-            ),
-            items: movies.take(5).map((movie) {
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.network(
-                  ApiConstants.getImageUrl(movie.thumbUrl),
-                  fit: BoxFit.cover,
-                  width: double.infinity,
+        : Consumer<MovieProvider>(
+            builder: (context, movieProvider, child) {
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 12),
+                    CarouselSlider(
+                      options: CarouselOptions(
+                        height: 200,
+                        autoPlay: true,
+                        enlargeCenterPage: true,
+                      ),
+                      items: movies.take(5).map((movie) {
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.network(
+                            ApiConstants.getImageUrl(movie.thumbUrl),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    if (movieProvider.watchHistory.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      _buildSectionTitle("Continue Watching"),
+                      _buildContinueWatchingList(movieProvider.watchHistory),
+                    ],
+                    const SizedBox(height: 24),
+                    _buildSectionTitle("New Movies"),
+                    _buildMovieHorizontalList(),
+                    _buildSectionTitle("Recommend"),
+                    _buildMovieHorizontalList(),
+                    _buildSectionTitle("Trending"),
+                    _buildMovieHorizontalList(),
+                  ],
                 ),
               );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionTitle("New Movies"),
-          _buildMovieHorizontalList(),
-          _buildSectionTitle("Recommend"),
-          _buildMovieHorizontalList(),
-          _buildSectionTitle("Trending"),
-          _buildMovieHorizontalList(),
-        ],
+            },
+          );
+  }
+
+  Widget _buildContinueWatchingList(List<Movie> history) {
+    return SizedBox(
+      height: 230,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+        ),
+        child: ListView.builder(
+          primary: false,
+          shrinkWrap: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          itemCount: history.length,
+          itemBuilder: (context, index) {
+            final movie = history[index];
+            final progress = movie.playbackDuration != null && movie.playbackDuration! > 0
+                ? movie.position! / movie.playbackDuration!
+                : 0.0;
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MovieCard(movie: movie),
+                  const SizedBox(height: 4),
+                  if (movie.episodeName != null)
+                    SizedBox(
+                      width: 130,
+                      child: Text(
+                        movie.episodeName!,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 130,
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey[800],
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -155,7 +223,10 @@ class _HomeScreenState extends State<HomeScreen> {
           scrollDirection: Axis.horizontal,
           itemCount: movies.length,
           itemBuilder: (context, index) {
-            return MovieCard(movie: movies[index]);
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: MovieCard(movie: movies[index]),
+            );
           },
         ),
       ),

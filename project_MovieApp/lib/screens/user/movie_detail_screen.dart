@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:intl/intl.dart';
@@ -88,16 +87,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               return const Center(child: CircularProgressIndicator(color: Colors.amber));
             }
 
-            final movieInfo = provider.movieDetailData;
-            if (movieInfo == null) {
+            final movie = provider.movieDetail;
+            if (movie == null) {
               return const Center(
                   child: Text("Lỗi tải thông tin", style: TextStyle(color: Colors.white)));
             }
-
-            final genres = (movieInfo['category'] as List? ?? []).map((c) => c['name']).join(', ');
-            final actors = (movieInfo['actor'] as List?)?.join(', ') ?? "Đang cập nhật";
-            final directors = (movieInfo['director'] as List?)?.join(', ') ?? "Đang cập nhật";
-            final episodeTotal = movieInfo['episode_total'] ?? "??";
 
             return Column(
               children: [
@@ -119,7 +113,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             fit: StackFit.expand,
                             children: [
                               Image.network(
-                                ApiConstants.getImageUrl(movieInfo['thumb_url'] ?? ""),
+                                ApiConstants.getImageUrl(movie.thumbUrl),
                                 fit: BoxFit.contain,
                                 errorBuilder: (_, __, ___) => Container(
                                   color: Colors.grey[900],
@@ -190,7 +184,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.all(16.0),
-                              child: _buildMovieInfo(movieInfo, provider.episodes, player, genres),
+                              child: _buildMovieInfo(movie, provider.episodes, player),
                             ),
                             TabBar(
                               isScrollable: true,
@@ -209,7 +203,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             Expanded(
                               child: TabBarView(
                                 children: [
-                                  _buildOverviewTab(movieInfo, directors, actors, episodeTotal),
+                                  _buildOverviewTab(movie),
                                   _buildEpisodesTab(provider, player),
                                   _buildReviewsTab(reviewProvider),
                                   _buildRelatedTab(provider),
@@ -230,10 +224,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _buildMovieInfo(Map<String, dynamic> movieInfo, List<EpisodeServer> episodes,
-      PlayerProvider player, String genres) {
+  Widget _buildMovieInfo(Movie movie, List<EpisodeServer> episodes, PlayerProvider player) {
     final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
     final currentEpName = isPlayingThis ? player.currentEpisodeName : "1";
+
+    final genreNames = movie.categoryNames.values.join(', ');
+    final primaryGenre = genreNames.split(',').first;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +239,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           children: [
             Expanded(
               child: Text(
-                movieInfo['name'] ?? "",
+                movie.name,
                 style:
                     const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
               ),
@@ -252,7 +248,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration:
                   BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(8)),
-              child: Text("Tập $currentEpName/${movieInfo['episode_total'] ?? "???"}",
+              child: Text("Tập $currentEpName/${movie.episodeTotal ?? '???'}",
                   style: const TextStyle(color: Colors.grey, fontSize: 12)),
             ),
           ],
@@ -275,7 +271,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-                "${movieInfo['year']}  •  ${genres.split(',').first}  •  ${movieInfo['time'] ?? '45 phút'}",
+                "${movie.year}  •  $primaryGenre  •  ${movie.durationLabel ?? '45 phút'}",
                 style: const TextStyle(color: Colors.grey, fontSize: 14)),
           ],
         ),
@@ -318,9 +314,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _buildOverviewTab(
-      Map<String, dynamic> movieInfo, String directors, String actors, dynamic episodeTotal) {
-    final String content = movieInfo['content']?.replaceAll(RegExp(r'<[^>]*>'), '') ?? "Không có mô tả.";
+  Widget _buildOverviewTab(Movie movie) {
+    final String content = movie.content?.replaceAll(RegExp(r'<[^>]*>'), '') ?? "Không có mô tả.";
+    final String actorsDisplay = movie.actors.isEmpty ? "Đang cập nhật" : movie.actors.join(', ');
+    final String directorsDisplay = movie.directors.isEmpty ? "Đang cập nhật" : movie.directors.join(', ');
+    final String episodeDisplay = "${movie.episodeTotal ?? '??'} tập";
+    final String viewDisplay = movie.viewCount != null && movie.viewCount! > 0
+        ? "${_formatViewCount(movie.viewCount!)} lượt xem"
+        : "";
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -335,15 +337,26 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 style: const TextStyle(color: Colors.amber)),
           ),
           const SizedBox(height: 20),
-          _buildDetailRow("Đạo diễn:", directors),
-          _buildDetailRow("Diễn viên:", actors),
-          _buildDetailRow("Số tập:", "$episodeTotal tập"),
-          const SizedBox(height: 16),
-          const Text("2.1M lượt xem",
-              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+          _buildDetailRow("Đạo diễn:", directorsDisplay),
+          _buildDetailRow("Diễn viên:", actorsDisplay),
+          _buildDetailRow("Số tập:", episodeDisplay),
+          if (viewDisplay.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(viewDisplay,
+                style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
         ],
       ),
     );
+  }
+
+  String _formatViewCount(int views) {
+    if (views >= 1000000) {
+      return '${(views / 1000000).toStringAsFixed(1)}M';
+    } else if (views >= 1000) {
+      return '${(views / 1000).toStringAsFixed(1)}K';
+    }
+    return views.toString();
   }
 
   Widget _buildDetailRow(String label, String value) {

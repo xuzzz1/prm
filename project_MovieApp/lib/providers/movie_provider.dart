@@ -12,7 +12,7 @@ class MovieProvider extends ChangeNotifier {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Map<String, dynamic>? _movieDetailData;
+  Movie? _movieDetail;
   List<EpisodeServer> _episodes = [];
   List<Movie> _relatedMovies = [];
   bool _isLoadingDetail = false;
@@ -22,7 +22,7 @@ class MovieProvider extends ChangeNotifier {
   // Danh sách lịch sử xem phim
   List<Movie> _watchHistory = [];
 
-  Map<String, dynamic>? get movieDetailData => _movieDetailData;
+  Movie? get movieDetail => _movieDetail;
   List<EpisodeServer> get episodes => _episodes;
   List<Movie> get relatedMovies => _relatedMovies;
   bool get isLoadingDetail => _isLoadingDetail;
@@ -46,30 +46,30 @@ class MovieProvider extends ChangeNotifier {
 
   Future<void> loadMovieDetail(String slug) async {
     // CHỐNG RELOAD: Nếu đang xem phim này rồi thì không load lại từ API
-    if (_movieDetailData != null && _movieDetailData!['slug'] == slug) {
-      return; 
+    if (_movieDetail != null && _movieDetail!.slug == slug) {
+      return;
     }
 
     _isLoadingDetail = true;
-    _movieDetailData = null;
+    _movieDetail = null;
     _episodes = [];
     _relatedMovies = [];
     notifyListeners();
 
     final result = await _movieService.fetchMovieDetail(slug);
     if (result != null) {
-      _movieDetailData = result['movie'];
+      // Build a fully-enriched Movie from the detail response
+      _movieDetail = Movie.fromJson(result['movie'] as Map<String, dynamic>);
       var epList = result['episodes'] as List? ?? [];
       _episodes = epList.map((e) => EpisodeServer.fromJson(e)).toList();
 
       // Tải phim liên quan dựa trên category đầu tiên
-      final categories = _movieDetailData?['category'] as List?;
-      if (categories != null && categories.isNotEmpty) {
-        final categorySlug = categories[0]['slug'];
+      if (_movieDetail!.categories.isNotEmpty) {
+        final categorySlug = _movieDetail!.categories.first;
         final relatedData = await _movieService.fetchMoviesByCategory(categorySlug, 1);
         _relatedMovies = (relatedData['movies'] as List<Movie>)
-            .where((m) => m.slug != slug) // Loại bỏ phim hiện tại
-            .take(12) // Lấy tối đa 12 phim
+            .where((m) => m.slug != slug)
+            .take(12)
             .toList();
       }
     }
@@ -179,7 +179,7 @@ class MovieProvider extends ChangeNotifier {
   // 3. Thêm/Cập nhật lịch sử (Local + Cloud)
   Future<void> addToHistory(Movie movie, {int? position, int? duration, String? epName}) async {
     movie.position = position ?? movie.position;
-    movie.duration = duration ?? movie.duration;
+    movie.playbackDuration = duration ?? movie.playbackDuration;
     movie.episodeName = epName ?? movie.episodeName;
     movie.lastWatchedTimestamp = DateTime.now().millisecondsSinceEpoch;
 

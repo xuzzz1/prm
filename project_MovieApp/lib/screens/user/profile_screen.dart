@@ -335,8 +335,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   Widget _buildHorizontalHistoryItem(BuildContext context, Movie movie) {
     double progress = 0.0;
-    if (movie.position != null && movie.duration != null && movie.duration! > 0) {
-      progress = movie.position! / movie.duration!;
+    if (movie.position != null && movie.playbackDuration != null && movie.playbackDuration! > 0) {
+      progress = movie.position! / movie.playbackDuration!;
     }
 
     return _AnimatedScaleButton(

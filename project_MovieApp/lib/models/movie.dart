@@ -4,12 +4,26 @@ class Movie {
   final String thumbUrl;
   final String posterUrl;
   final int year;
-  
-  // Các trường phục vụ lịch sử xem phim
-  int? position; // Vị trí đang xem (giây)
-  int? duration; // Tổng thời lượng (giây)
-  String? episodeName; // Tên tập đang xem
-  int? lastWatchedTimestamp; // Thời điểm xem cuối cùng
+
+  // Metadata available from detail API response
+  final String? originName;
+  final String? content;
+  final String? type; // "series" or "single"
+  final List<String> categories; // category slugs
+  final Map<String, String> categoryNames; // slug -> display name
+  final List<String> countries; // country slugs
+  final Map<String, String> countryNames; // slug -> display name
+  final List<String> actors;
+  final List<String> directors;
+  final String? episodeTotal;
+  final String? durationLabel; // e.g. "45 phút" or "17 phút/tập"
+  final int? viewCount;
+
+  // Playback fields
+  int? position;
+  int? playbackDuration; // seconds
+  String? episodeName;
+  int? lastWatchedTimestamp;
 
   Movie({
     required this.name,
@@ -17,8 +31,20 @@ class Movie {
     required this.thumbUrl,
     required this.posterUrl,
     required this.year,
+    this.originName,
+    this.content,
+    this.type,
+    this.categories = const [],
+    this.categoryNames = const {},
+    this.countries = const [],
+    this.countryNames = const {},
+    this.actors = const [],
+    this.directors = const [],
+    this.episodeTotal,
+    this.durationLabel,
+    this.viewCount,
     this.position,
-    this.duration,
+    this.playbackDuration,
     this.episodeName,
     this.lastWatchedTimestamp,
   });
@@ -30,11 +56,46 @@ class Movie {
       thumbUrl: json['thumb_url'] ?? '',
       posterUrl: json['poster_url'] ?? '',
       year: json['year'] ?? 0,
+      originName: json['origin_name'],
+      content: json['content'],
+      type: json['type'],
+      categories: _flattenToSlugs(json['category']),
+      categoryNames: _flattenToNameMap(json['category']),
+      countries: _flattenToSlugs(json['country']),
+      countryNames: _flattenToNameMap(json['country']),
+      actors: _flattenToStrings(json['actor']),
+      directors: _flattenToStrings(json['director']),
+      episodeTotal: json['episode_total']?.toString(),
+      durationLabel: json['time']?.toString(),
+      viewCount: json['view'] is int ? json['view'] : null,
       position: json['position'],
-      duration: json['duration'],
+      playbackDuration: json['duration'],
       episodeName: json['episode_name'],
       lastWatchedTimestamp: json['last_watched_timestamp'],
     );
+  }
+
+  static List<String> _flattenToSlugs(dynamic field) {
+    if (field == null) return [];
+    return (field as List).map((e) => e['slug']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+  }
+
+  static Map<String, String> _flattenToNameMap(dynamic field) {
+    if (field == null) return {};
+    final result = <String, String>{};
+    for (var e in field as List) {
+      final slug = e['slug']?.toString();
+      final name = e['name']?.toString();
+      if (slug != null && slug.isNotEmpty && name != null && name.isNotEmpty) {
+        result[slug] = name;
+      }
+    }
+    return result;
+  }
+
+  static List<String> _flattenToStrings(dynamic field) {
+    if (field == null) return [];
+    return (field as List).map((e) => e.toString()).where((s) => s.isNotEmpty && s != 'Đang cập nhật').toList();
   }
 
   Map<String, dynamic> toJson() {
@@ -44,8 +105,11 @@ class Movie {
       'thumb_url': thumbUrl,
       'poster_url': posterUrl,
       'year': year,
+      'origin_name': originName,
+      'content': content,
+      'type': type,
       'position': position,
-      'duration': duration,
+      'duration': playbackDuration,
       'episode_name': episodeName,
       'last_watched_timestamp': lastWatchedTimestamp,
     };

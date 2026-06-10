@@ -3,23 +3,24 @@ import 'package:provider/provider.dart';
 import '../models/movie.dart';
 import '../constants/api_constants.dart';
 import '../providers/movie_provider.dart';
-import '../screens/user/movie_detail_screen.dart'; // Import trang chi tiết vừa tạo
+import '../screens/user/movie_detail_screen.dart';
 
 class MovieCard extends StatelessWidget {
   final Movie movie;
+  final double width;
+  final double imageHeight;
 
   const MovieCard({
     super.key,
     required this.movie,
+    this.width = 130,
+    this.imageHeight = 145,
   });
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
     return GestureDetector(
       onTap: () {
-        // Nhấn vào thẻ phim để chuyển tiếp sang trang chi tiết
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -27,13 +28,13 @@ class MovieCard extends StatelessWidget {
           ),
         );
       },
-      child: Container(
-        width: screenWidth * 0.38,
-        margin: const EdgeInsets.only(right: 12),
+      child: SizedBox(
+        width: width,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
+            SizedBox(
+              height: imageHeight,
               child: Stack(
                 children: [
                   ClipRRect(
@@ -41,15 +42,14 @@ class MovieCard extends StatelessWidget {
                     child: Image.network(
                       ApiConstants.getImageUrl(movie.thumbUrl),
                       fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
+                      width: width,
+                      height: imageHeight,
                       errorBuilder: (context, error, stackTrace) => Container(
                         color: Colors.grey[900],
                         child: const Icon(Icons.movie, color: Colors.white54),
                       ),
                     ),
                   ),
-                  // Nút Trái tim bên ngoài MovieCard
                   Positioned(
                     top: 8,
                     right: 8,
