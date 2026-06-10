@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/review.dart';
+import '../models/movie.dart';
+import '../services/recommendation_service.dart';
 
 class ReviewProvider extends ChangeNotifier {
   final FirebaseDatabase _database = FirebaseDatabase.instance;
+  final RecommendationService _recommendationService = RecommendationService();
   
   List<Review> _reviews = [];
   double _averageRating = 0.0;
@@ -62,6 +65,7 @@ class ReviewProvider extends ChangeNotifier {
     required double rating,
     required String comment,
     required User user,
+    Movie? movie,
   }) async {
     try {
       final review = Review(
@@ -76,6 +80,10 @@ class ReviewProvider extends ChangeNotifier {
       print("Đang gửi review lên Firebase: reviews/$movieSlug/${user.uid}");
       await _database.ref('reviews/$movieSlug/${user.uid}').set(review.toJson());
       print("Gửi review thành công!");
+
+      if (movie != null) {
+        _recommendationService.updateAffinityFromRating(movie, rating);
+      }
     } catch (e) {
       print("Lỗi khi gửi review: $e");
       rethrow; // Đẩy lỗi ra để UI có thể bắt được

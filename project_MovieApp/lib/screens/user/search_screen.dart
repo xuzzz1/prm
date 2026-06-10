@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/movie_service.dart';
 import '../../services/search_service.dart';
+import '../../services/recommendation_service.dart';
 import '../../models/movie.dart';
 import '../../widgets/movie_card.dart';
 import 'movie_detail_screen.dart';
@@ -15,6 +16,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final MovieService _movieService = MovieService();
   final SearchService _searchService = SearchService();
+  final RecommendationService _recommendationService = RecommendationService();
   final TextEditingController _searchController = TextEditingController();
   
   List<String> _history = [];
@@ -49,6 +51,7 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     await _searchService.addSearchTerm(query);
+    _recommendationService.updateAffinityFromSearch(query);
     final results = await _movieService.searchMovies(query);
     final history = await _searchService.getHistory();
 

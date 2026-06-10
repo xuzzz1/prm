@@ -6,11 +6,13 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/movie.dart';
 import '../services/movie_service.dart';
+import '../services/recommendation_service.dart';
 
 class MovieProvider extends ChangeNotifier {
   final MovieService _movieService = MovieService();
   final FirebaseDatabase _db = FirebaseDatabase.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final RecommendationService _recommendationService = RecommendationService();
 
   Movie? _movieDetail;
   List<EpisodeServer> _episodes = [];
@@ -101,8 +103,9 @@ class MovieProvider extends ChangeNotifier {
   // 3. Thêm hoặc Xóa phim khỏi danh sách yêu thích (Toggle)
   Future<void> toggleFavorite(Movie movie) async {
     final prefs = await SharedPreferences.getInstance();
+    final wasFavorite = isFavorite(movie.slug);
 
-    if (isFavorite(movie.slug)) {
+    if (wasFavorite) {
       // Nếu có rồi thì Xóa
       _favoriteMovies.removeWhere((item) => item.slug == movie.slug);
     } else {
@@ -115,6 +118,9 @@ class MovieProvider extends ChangeNotifier {
     await prefs.setStringList('favorite_movies', encodeList);
 
     notifyListeners(); // Cập nhật lại giao diện ngay lập tức
+
+    // Affinity tracking
+    _recommendationService.updateAffinityFromFavorite(movie, !wasFavorite);
   }
 
   // --- LOGIC XỬ LÝ LỊCH SỬ XEM PHIM (WATCH HISTORY) ---

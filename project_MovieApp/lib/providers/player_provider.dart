@@ -4,13 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../models/movie.dart';
+import '../services/recommendation_service.dart';
 import 'movie_provider.dart';
 
 class PlayerProvider extends ChangeNotifier {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   Widget? _videoWidget; // Cache widget để tránh giật video khi rebuild
-  
+
   Movie? _currentMovie;
   String? _currentEpisodeName;
   int currentEpisodeIndex = 0;
@@ -23,6 +24,11 @@ class PlayerProvider extends ChangeNotifier {
 
   Timer? _progressTimer;
   MovieProvider? _movieProvider;
+  final RecommendationService _recommendationService = RecommendationService();
+
+  // Milestones for affinity tracking
+  final Set<String> _watchedMilestone50 = {};
+  final Set<String> _watchedMilestone90 = {};
 
   // Getters
   VideoPlayerController? get videoController => _videoController;
@@ -113,7 +119,7 @@ class PlayerProvider extends ChangeNotifier {
     if (_videoController != null && _videoController!.value.isInitialized && _currentMovie != null) {
       final position = _videoController!.value.position.inSeconds;
       final duration = _videoController!.value.duration.inSeconds;
-      
+
       if (position > 0 && duration > 0) {
         _movieProvider?.addToHistory(
           _currentMovie!,
@@ -121,6 +127,18 @@ class PlayerProvider extends ChangeNotifier {
           duration: duration,
           epName: _currentEpisodeName,
         );
+
+        // Affinity tracking
+        final percent = position / duration;
+        final key = '${_currentMovie!.slug}_$_currentEpisodeName';
+        if (percent >= 0.5 && !_watchedMilestone50.contains(key)) {
+          _watchedMilestone50.add(key);
+          _recommendationService.updateAffinityFromWatch(_currentMovie!, 0.5);
+        }
+        if (percent >= 0.9 && !_watchedMilestone90.contains(key)) {
+          _watchedMilestone90.add(key);
+          _recommendationService.updateAffinityFromWatch(_currentMovie!, 0.9);
+        }
       }
     }
   }
@@ -138,7 +156,13 @@ class PlayerProvider extends ChangeNotifier {
   void closePlayer() {
     _saveProgress(); // Lưu lần cuối trước khi đóng
     _stopProgressTimer();
-    
+
+    // Clear milestones for this movie so re-watch triggers affinity again
+    if (_currentMovie != null) {
+      _watchedMilestone50.removeWhere((k) => k.startsWith(_currentMovie!.slug));
+      _watchedMilestone90.removeWhere((k) => k.startsWith(_currentMovie!.slug));
+    }
+
     _videoController?.pause();
     _videoController?.dispose();
     _chewieController?.dispose();
@@ -148,7 +172,7 @@ class PlayerProvider extends ChangeNotifier {
     _currentMovie = null;
     _isMiniPlayerActive = false;
     _isExpanded = false;
-    
+
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);

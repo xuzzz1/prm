@@ -869,11 +869,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
                 try {
                   // Gọi Provider để gửi review
+                  final movieProvider = Provider.of<MovieProvider>(context, listen: false);
                   await Provider.of<ReviewProvider>(context, listen: false).addOrUpdateReview(
                     movieSlug: widget.movie.slug,
                     rating: rating,
                     comment: commentController.text,
                     user: user,
+                    movie: movieProvider.movieDetail ?? widget.movie,
                   );
                   
                   // Kiểm tra mounted trước khi dùng context để tránh lỗi
