@@ -16,6 +16,25 @@ class MovieService {
     return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
   }
 
+  Future<List<Movie>> fetchAllMovies({int pages = 3}) async {
+    final allMovies = <Movie>[];
+    for (int page = 1; page <= pages; page++) {
+      try {
+        final url = Uri.parse(
+          '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=$page',
+        );
+        final response = await http.get(url);
+        final data = jsonDecode(response.body);
+        final List items = data['items'] ?? [];
+        final movies = items.map((json) => Movie.fromJson(json)).toList();
+        allMovies.addAll(movies);
+      } catch (e) {
+        print('Error fetching movies page $page: $e');
+      }
+    }
+    return allMovies;
+  }
+
   // HÀM MỚI: Gọi API lấy chi tiết phim & danh sách tập phim
   Future<Map<String, dynamic>?> fetchMovieDetail(String slug) async {
     try {
@@ -96,13 +115,7 @@ class MovieService {
       }
 
       final movies = items.map((json) {
-        return Movie(
-          name: json['name'] ?? '',
-          slug: json['slug'] ?? '',
-          thumbUrl: json['thumb_url'] ?? '',
-          posterUrl: json['poster_url'] ?? '',
-          year: json['year'] ?? 0,
-        );
+        return Movie.fromJson(json);
       }).toList();
       
       return {

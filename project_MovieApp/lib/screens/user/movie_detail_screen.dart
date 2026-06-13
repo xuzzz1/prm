@@ -23,30 +23,50 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   bool _isDescriptionExpanded = false;
   final Map<String, bool> _expandedReplies = {}; // Lưu trạng thái ẩn/hiện reply cho từng user review
+  MovieProvider? _movieProvider;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
-      final movieProvider = Provider.of<MovieProvider>(context, listen: false);
-      movieProvider.loadMovieDetail(widget.movie.slug);
+      _movieProvider = Provider.of<MovieProvider>(context, listen: false);
+      _movieProvider!.loadMovieDetail(widget.movie.slug);
       Provider.of<ReviewProvider>(context, listen: false).fetchReviews(widget.movie.slug);
-      
+
       // Kết nối MovieProvider vào PlayerProvider để đồng bộ progress
-      context.read<PlayerProvider>().setMovieProvider(movieProvider);
+      context.read<PlayerProvider>().setMovieProvider(_movieProvider!);
     });
   }
 
   void _playEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
-    if (episodes.isEmpty) return;
-    if (svIdx >= episodes.length) return;
-    final server = episodes[svIdx];
-    if (epIdx >= server.serverData.length) return;
+    if (episodes.isEmpty) {
+      _showPlayError("Dữ liệu tập phim chưa sẵn sàng.");
+      return;
+    }
 
-    final episode = server.serverData[epIdx];
+    // Find the first server + episode that has a valid m3u8 link
+    for (int s = 0; s < episodes.length; s++) {
+      for (int e = 0; e < episodes[s].serverData.length; e++) {
+        final episode = episodes[s].serverData[e];
+        if (episode.linkM3u8.isEmpty) continue;
+
+        _doPlayEpisode(episodes, s, e);
+        return;
+      }
+    }
+
+    // All episodes have empty links
+    _showPlayError("Không tìm thấy link phát hợp lệ cho phim này.");
+  }
+
+  void _doPlayEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
+    final episode = episodes[svIdx].serverData[epIdx];
     
+    // Dùng movieDetail đầy đủ (sau loadMovieDetail) để có categories/actors cho recommendation
+    final movieForPlayer = _movieProvider?.movieDetail ?? widget.movie;
+
     // Lấy thông tin xem tiếp từ lịch sử
-    final history = context.read<MovieProvider>().getHistoryForMovie(widget.movie.slug);
+    final history = context.read<MovieProvider>().getHistoryForMovie(movieForPlayer.slug);
     Duration? startAt;
     
     // Nếu cùng tập phim thì mới resume (hoặc tùy bạn muốn resume bất kể tập nào)
@@ -55,16 +75,27 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     // Lưu vào lịch sử xem phim
-    context.read<MovieProvider>().addToHistory(widget.movie, epName: episode.name);
+    context.read<MovieProvider>().addToHistory(movieForPlayer, epName: episode.name);
 
     context.read<PlayerProvider>().setVideo(
-          widget.movie,
+          movieForPlayer,
           episode.linkM3u8,
           episode.name,
           epIdx: epIdx,
           svIdx: svIdx,
           startAt: startAt,
         );
+  }
+
+  void _showPlayError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -226,7 +257,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   Widget _buildMovieInfo(Movie movie, List<EpisodeServer> episodes, PlayerProvider player) {
     final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
-    final currentEpName = isPlayingThis ? player.currentEpisodeName : "1";
+    final currentEpName = isPlayingThis ? (player.currentEpisodeName ?? "1") : "1";
 
     final genreNames = movie.categoryNames.values.join(', ');
     final primaryGenre = genreNames.split(',').first;
@@ -248,8 +279,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration:
                   BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(8)),
-              child: Text("Tập $currentEpName/${movie.episodeTotal ?? '???'}",
-                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              child: Text(
+                "${currentEpName.startsWith('Tập') ? currentEpName : "Tập $currentEpName"}/${movie.episodeTotal ?? '???'}",
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
             ),
           ],
         ),

@@ -3,22 +3,26 @@ class RecommendationPreference {
   final Map<String, double> categoryAffinity;
   final Map<String, double> countryAffinity;
   final Map<String, double> actorAffinity;
-  final Map<String, int> watchCountByCategory;
+  final List<String> watchedSlugs;
   final int totalMoviesWatched;
   final List<String> recentWatchedSlugs;
   final List<String> favoriteSlugs;
   final int lastUpdated;
+
+  // Cached full movie data for recently watched movies (for scoring similarity)
+  final Map<String, Map<String, dynamic>> watchedMoviesCache;
 
   RecommendationPreference({
     required this.userId,
     this.categoryAffinity = const {},
     this.countryAffinity = const {},
     this.actorAffinity = const {},
-    this.watchCountByCategory = const {},
+    this.watchedSlugs = const [],
     this.totalMoviesWatched = 0,
     this.recentWatchedSlugs = const [],
     this.favoriteSlugs = const [],
     int? lastUpdated,
+    this.watchedMoviesCache = const {},
   }) : lastUpdated = lastUpdated ?? DateTime.now().millisecondsSinceEpoch;
 
   factory RecommendationPreference.empty(String userId) {
@@ -31,11 +35,12 @@ class RecommendationPreference {
       categoryAffinity: _parseStringDoubleMap(json['category_affinity']),
       countryAffinity: _parseStringDoubleMap(json['country_affinity']),
       actorAffinity: _parseStringDoubleMap(json['actor_affinity']),
-      watchCountByCategory: _parseStringIntMap(json['watch_count_by_category']),
+      watchedSlugs: _parseStringList(json['watched_slugs'] ?? json['recent_watched_slugs']),
       totalMoviesWatched: json['total_movies_watched'] ?? 0,
       recentWatchedSlugs: _parseStringList(json['recent_watched_slugs']),
       favoriteSlugs: _parseStringList(json['favorite_slugs']),
       lastUpdated: json['last_updated'],
+      watchedMoviesCache: _parseWatchedMoviesCache(json['watched_movies_cache']),
     );
   }
 
@@ -44,11 +49,12 @@ class RecommendationPreference {
       'category_affinity': categoryAffinity,
       'country_affinity': countryAffinity,
       'actor_affinity': actorAffinity,
-      'watch_count_by_category': watchCountByCategory,
+      'watched_slugs': watchedSlugs,
       'total_movies_watched': totalMoviesWatched,
       'recent_watched_slugs': recentWatchedSlugs,
       'favorite_slugs': favoriteSlugs,
       'last_updated': lastUpdated,
+      'watched_movies_cache': watchedMoviesCache,
     };
   }
 
@@ -57,23 +63,36 @@ class RecommendationPreference {
     Map<String, double>? categoryAffinity,
     Map<String, double>? countryAffinity,
     Map<String, double>? actorAffinity,
-    Map<String, int>? watchCountByCategory,
+    List<String>? watchedSlugs,
     int? totalMoviesWatched,
     List<String>? recentWatchedSlugs,
     List<String>? favoriteSlugs,
     int? lastUpdated,
+    Map<String, Map<String, dynamic>>? watchedMoviesCache,
   }) {
     return RecommendationPreference(
       userId: userId ?? this.userId,
       categoryAffinity: categoryAffinity ?? Map.from(this.categoryAffinity),
       countryAffinity: countryAffinity ?? Map.from(this.countryAffinity),
       actorAffinity: actorAffinity ?? Map.from(this.actorAffinity),
-      watchCountByCategory: watchCountByCategory ?? Map.from(this.watchCountByCategory),
+      watchedSlugs: watchedSlugs ?? List.from(this.watchedSlugs),
       totalMoviesWatched: totalMoviesWatched ?? this.totalMoviesWatched,
       recentWatchedSlugs: recentWatchedSlugs ?? List.from(this.recentWatchedSlugs),
       favoriteSlugs: favoriteSlugs ?? List.from(this.favoriteSlugs),
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      watchedMoviesCache: watchedMoviesCache ?? Map.from(this.watchedMoviesCache),
     );
+  }
+
+  static Map<String, Map<String, dynamic>> _parseWatchedMoviesCache(dynamic data) {
+    if (data == null) return {};
+    final result = <String, Map<String, dynamic>>{};
+    (data as Map).forEach((key, value) {
+      if (value is Map) {
+        result[key.toString()] = Map<String, dynamic>.from(value);
+      }
+    });
+    return result;
   }
 
   static Map<String, double> _parseStringDoubleMap(dynamic data) {
@@ -81,15 +100,6 @@ class RecommendationPreference {
     final map = <String, double>{};
     (data as Map).forEach((key, value) {
       if (value is num) map[key.toString()] = value.toDouble();
-    });
-    return map;
-  }
-
-  static Map<String, int> _parseStringIntMap(dynamic data) {
-    if (data == null) return {};
-    final map = <String, int>{};
-    (data as Map).forEach((key, value) {
-      if (value is num) map[key.toString()] = value.toInt();
     });
     return map;
   }

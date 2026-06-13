@@ -4,7 +4,10 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../../services/movie_service.dart';
+import '../../services/recommendation_service.dart';
+import '../../services/recommendation_service.dart' show MovieBasedSection;
 import '../../models/movie.dart';
+import '../../models/scored_movie.dart';
 import '../../providers/movie_provider.dart';
 import '../../widgets/movie_card.dart';
 import '../../constants/api_constants.dart';
@@ -22,8 +25,15 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final MovieService movieService = MovieService();
+  final RecommendationService recommendationService = RecommendationService();
   List<Movie> movies = [];
+  List<ScoredMovie> recommendedMovies = [];
   bool isLoading = true;
+  bool isRecommendedLoading = true;
+
+  // Movie-based "Because you watched X" section
+  MovieBasedSection? _movieBasedSection;
+  List<ScoredMovie> _movieBasedMovies = [];
 
   // Quản lý tab hiện tại của Bottom Navigation
   int _currentIndex = 0;
@@ -32,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     fetchMovies();
+    _loadRecommendations();
+    _loadMovieBasedSection();
   }
 
   Future<void> fetchMovies() async {
@@ -39,6 +51,29 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       movies = result;
       isLoading = false;
+    });
+  }
+
+  Future<void> _loadMovieBasedSection() async {
+    final pool = await movieService.fetchAllMovies(pages: 3);
+
+    final movieBased = await recommendationService.getTopWatchedMovie(pool);
+    if (movieBased != null) {
+      final similar = await recommendationService.scoreMoviesForSeed(pool, 12);
+      if (!mounted) return;
+      setState(() {
+        _movieBasedSection = movieBased;
+        _movieBasedMovies = similar;
+      });
+    }
+  }
+
+  Future<void> _loadRecommendations() async {
+    final recMovies = await movieService.fetchAllMovies(pages: 3);
+    final result = await recommendationService.scoreMovies(recMovies);
+    setState(() {
+      recommendedMovies = result;
+      isRecommendedLoading = false;
     });
   }
 
@@ -127,11 +162,22 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildSectionTitle("Continue Watching"),
                       _buildContinueWatchingList(movieProvider.watchHistory),
                     ],
+                    if (_movieBasedSection != null && _movieBasedMovies.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      _buildSectionTitle(_movieBasedSection!.seedMovie.name, subtitle: _movieBasedSection!.reason),
+                      _buildMovieBasedHorizontalList(_movieBasedMovies),
+                      const SizedBox(height: 8),
+                    ],
                     const SizedBox(height: 24),
                     _buildSectionTitle("New Movies"),
                     _buildMovieHorizontalList(),
                     _buildSectionTitle("Recommend"),
-                    _buildMovieHorizontalList(),
+                    isRecommendedLoading
+                        ? const SizedBox(
+                            height: 230,
+                            child: Center(child: CircularProgressIndicator(color: Colors.amber)),
+                          )
+                        : _buildRecommendedHorizontalList(),
                     _buildSectionTitle("Trending"),
                     _buildMovieHorizontalList(),
                   ],
@@ -198,16 +244,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
-      ),
-    );
-  }
-
   Widget _buildMovieHorizontalList() {
     return SizedBox(
       height: 230,
@@ -226,6 +262,80 @@ class _HomeScreenState extends State<HomeScreen> {
             return Padding(
               padding: const EdgeInsets.only(right: 12),
               child: MovieCard(movie: movies[index]),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, {String? subtitle}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 13, color: Colors.amber[300], fontStyle: FontStyle.italic),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovieBasedHorizontalList(List<ScoredMovie> sectionMovies) {
+    return SizedBox(
+      height: 230,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+        ),
+        child: ListView.builder(
+          primary: false,
+          shrinkWrap: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          itemCount: sectionMovies.length,
+          itemBuilder: (context, index) {
+            final scored = sectionMovies[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: MovieCard(movie: scored.movie, matchReason: scored.matchReason),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendedHorizontalList() {
+    return SizedBox(
+      height: 230,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+        ),
+        child: ListView.builder(
+          primary: false,
+          shrinkWrap: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          itemCount: recommendedMovies.length,
+          itemBuilder: (context, index) {
+            final scored = recommendedMovies[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: MovieCard(movie: scored.movie, matchReason: scored.matchReason),
             );
           },
         ),

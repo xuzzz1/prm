@@ -9,12 +9,14 @@ class MovieCard extends StatelessWidget {
   final Movie movie;
   final double width;
   final double imageHeight;
+  final String? matchReason;
 
   const MovieCard({
     super.key,
     required this.movie,
     this.width = 130,
     this.imageHeight = 145,
+    this.matchReason,
   });
 
   @override
@@ -95,12 +97,22 @@ class MovieCard extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            Text(
-              movie.year.toString(),
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-            ),
+            matchReason != null
+                ? Text(
+                    matchReason!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.amber,
+                      fontSize: 11,
+                    ),
+                  )
+                : Text(
+                    movie.year.toString(),
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
           ],
         ),
       ),

@@ -26,8 +26,7 @@ class PlayerProvider extends ChangeNotifier {
   MovieProvider? _movieProvider;
   final RecommendationService _recommendationService = RecommendationService();
 
-  // Milestones for affinity tracking
-  final Set<String> _watchedMilestone50 = {};
+  // Milestone for affinity tracking (90% completion)
   final Set<String> _watchedMilestone90 = {};
 
   // Getters
@@ -68,7 +67,11 @@ class PlayerProvider extends ChangeNotifier {
       await _videoController?.dispose();
       _chewieController?.dispose();
 
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
+      final headers = {
+        'Referer': Uri.parse(url).origin,
+        'Origin': Uri.parse(url).origin,
+      };
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: headers);
       await _videoController!.initialize();
 
       // Tự động tua đến vị trí cũ nếu có
@@ -98,7 +101,7 @@ class PlayerProvider extends ChangeNotifier {
       _startProgressTimer();
     } catch (e) {
       _isLoading = false;
-      _errorMessage = "Không thể phát video. Vui lòng kiểm tra kết nối.";
+      _errorMessage = "Không thể phát video. Vui lòng kiểm tra kết nối.\n$e";
     }
 
     notifyListeners();
@@ -128,16 +131,12 @@ class PlayerProvider extends ChangeNotifier {
           epName: _currentEpisodeName,
         );
 
-        // Affinity tracking
+        // Affinity tracking — 90% completion triggers affinity bump (once per episode)
         final percent = position / duration;
         final key = '${_currentMovie!.slug}_$_currentEpisodeName';
-        if (percent >= 0.5 && !_watchedMilestone50.contains(key)) {
-          _watchedMilestone50.add(key);
-          _recommendationService.updateAffinityFromWatch(_currentMovie!, 0.5);
-        }
         if (percent >= 0.9 && !_watchedMilestone90.contains(key)) {
           _watchedMilestone90.add(key);
-          _recommendationService.updateAffinityFromWatch(_currentMovie!, 0.9);
+          _recommendationService.updateAffinityFromWatch(_currentMovie!, percent);
         }
       }
     }
@@ -157,9 +156,8 @@ class PlayerProvider extends ChangeNotifier {
     _saveProgress(); // Lưu lần cuối trước khi đóng
     _stopProgressTimer();
 
-    // Clear milestones for this movie so re-watch triggers affinity again
+    // Clear 90% milestone for this movie so re-watch triggers affinity again
     if (_currentMovie != null) {
-      _watchedMilestone50.removeWhere((k) => k.startsWith(_currentMovie!.slug));
       _watchedMilestone90.removeWhere((k) => k.startsWith(_currentMovie!.slug));
     }
 

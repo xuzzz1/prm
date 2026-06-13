@@ -36,11 +36,15 @@ class _PlayerScreenState
   }
 
   Future<void> initializePlayer() async {
-
-    videoPlayerController =
-        VideoPlayerController.networkUrl(
-          Uri.parse(widget.videoUrl),
-        );
+    final url = widget.videoUrl;
+    final headers = {
+      'Referer': Uri.parse(url).origin,
+      'Origin': Uri.parse(url).origin,
+    };
+    videoPlayerController = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      httpHeaders: headers,
+    );
 
     await videoPlayerController.initialize();
 
