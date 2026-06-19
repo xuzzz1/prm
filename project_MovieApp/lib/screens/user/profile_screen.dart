@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           ),
                         ),
                         SizedBox(
-                          height: 160,
+                          height: 185,
                           child: ListView.builder(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             scrollDirection: Axis.horizontal,
@@ -400,7 +400,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        "Tập ${movie.episodeName}",
+                        movie.episodeName!.toLowerCase().contains('tập') 
+                            ? movie.episodeName! 
+                            : "Tập ${movie.episodeName}",
                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -423,7 +425,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        "Đã xem ${movie.year}",
+                        movie.year.toString(),
                         style: TextStyle(color: Colors.grey[500], fontSize: 11),
                       ),
                     ],

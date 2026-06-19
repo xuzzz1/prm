@@ -94,7 +94,7 @@ class _CategoryMoviesScreenState extends State<CategoryMoviesScreen> {
                               crossAxisCount: 3,
                               mainAxisSpacing: 16,
                               crossAxisSpacing: 12,
-                              childAspectRatio: 0.6,
+                              childAspectRatio: 0.65,
                             ),
                             itemCount: _movies.length,
                             itemBuilder: (context, index) {

@@ -55,7 +55,7 @@ class HistoryScreen extends StatelessWidget {
               crossAxisCount: 3,
               mainAxisSpacing: 20,
               crossAxisSpacing: 12,
-              childAspectRatio: 0.6,
+              childAspectRatio: 0.65,
             ),
             itemCount: provider.watchHistory.length,
             itemBuilder: (context, index) {

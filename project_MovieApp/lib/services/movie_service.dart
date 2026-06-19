@@ -100,6 +100,16 @@ class MovieService {
     return {'movies': <Movie>[], 'totalPages': 1};
   }
 
+  Future<Map<String, dynamic>> fetchMoviesByType(String type, int page) async {
+    try {
+      final url = Uri.parse('${ApiConstants.baseUrl}/v1/api/danh-sach/$type?page=$page&limit=12');
+      return _fetchMoviesFromUrl(url);
+    } catch (e) {
+      print("Lỗi fetchMoviesByType: $e");
+    }
+    return {'movies': <Movie>[], 'totalPages': 1};
+  }
+
   // Hàm helper dùng chung để parse dữ liệu từ API v1
   Future<Map<String, dynamic>> _fetchMoviesFromUrl(Uri url) async {
     final response = await http.get(url);

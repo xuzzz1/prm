@@ -7,6 +7,7 @@ import 'providers/movie_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
+import 'providers/admin_provider.dart'; // Thêm import
 import 'screens/auth/login_screen.dart';
 import 'themes/app_theme.dart';
 
@@ -25,6 +26,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => ReviewProvider()),
+        ChangeNotifierProvider(create: (_) => AdminProvider()), // Thêm provider
       ],
       child: const MyApp(),
     ),

@@ -1,79 +1,117 @@
 // lib/providers/auth_provider.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class AuthProvider extends ChangeNotifier {
-  // Khởi tạo đối tượng FirebaseAuth để làm việc với server
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseDatabase _db = FirebaseDatabase.instance;
 
   bool _isLoading = false;
   User? _user;
+  String? _role;
 
   bool get isLoading => _isLoading;
-  User? get currentUser => _user; // Lấy thông tin user hiện tại (Email, UID...)
+  User? get currentUser => _user;
+  String? get role => _role;
 
   AuthProvider() {
-    // Lắng nghe trạng thái thay đổi của User (đang đăng nhập hay đã đăng xuất)
-    _auth.authStateChanges().listen((User? user) {
+    _auth.authStateChanges().listen((User? user) async {
       _user = user;
+      if (user != null) {
+        await fetchUserRole(user.uid);
+      } else {
+        _role = null;
+      }
       notifyListeners();
     });
   }
 
-  // --- 1. XỬ LÝ ĐĂNG NHẬP THẬT VỚI FIREBASE ---
+  Future<void> fetchUserRole(String uid) async {
+    // Nếu là tài khoản admin đặc biệt thì gán role admin luôn
+    if (_user?.email == 'admin@gmail.com') {
+      _role = 'admin';
+      return;
+    }
+
+    try {
+      final snapshot = await _db.ref('users/$uid/role').get();
+      if (snapshot.exists) {
+        _role = snapshot.value.toString();
+      } else {
+        _role = 'user';
+      }
+    } catch (e) {
+      _role = 'user';
+    }
+  }
+
   Future<String?> login(String email, String password) async {
     _isLoading = true;
     notifyListeners();
 
+    // Hỗ trợ gõ "admin" thay vì "admin@gmail.com" cho tiện
+    String loginEmail = email.trim();
+    if (loginEmail.toLowerCase() == 'admin') {
+      loginEmail = 'admin@gmail.com';
+    }
+
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      UserCredential credential = await _auth.signInWithEmailAndPassword(
+        email: loginEmail,
+        password: password,
+      );
+      
+      if (credential.user != null) {
+        await fetchUserRole(credential.user!.uid);
+      }
+
       _isLoading = false;
       notifyListeners();
-      return null; // Không có lỗi -> Đăng nhập thành công
+      return null;
     } on FirebaseAuthException catch (e) {
       _isLoading = false;
       notifyListeners();
-
-      // Trả về thông báo lỗi tiếng Việt dễ hiểu
       if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
         return "Email hoặc mật khẩu không chính xác.";
-      } else if (e.code == 'invalid-email') {
-        return "Định dạng email không hợp lệ.";
       }
       return e.message ?? "Đã xảy ra lỗi hệ thống.";
     }
   }
 
-  // --- 2. XỬ LÝ ĐĂNG KÝ THẬT VỚI FIREBASE ---
   Future<String?> register(String name, String email, String password) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Tạo tài khoản trên Firebase bằng Email & Password
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Cập nhật thêm Tên hiển thị (DisplayName) cho User vừa tạo
       if (credential.user != null) {
         await credential.user!.updateDisplayName(name);
+        
+        // Lưu role mặc định là user vào Database
+        await _db.ref('users/${credential.user!.uid}').set({
+          'name': name,
+          'email': email,
+          'role': 'user',
+        });
+        
+        _role = 'user';
         await credential.user!.reload();
         _user = _auth.currentUser;
       }
 
       _isLoading = false;
       notifyListeners();
-      return null; // Không có lỗi -> Đăng ký thành công
+      return null;
     } on FirebaseAuthException catch (e) {
       _isLoading = false;
       notifyListeners();
-
       if (e.code == 'email-already-in-use') {
-        return "Email này đã được sử dụng bởi một tài khoản khác.";
-      } else if (e.code == 'weak-password') {
-        return "Mật khẩu quá yếu (cần tối thiểu 6 ký tự).";
+        return "Email này đã được sử dụng.";
       }
       return e.message ?? "Đăng ký thất bại.";
     }

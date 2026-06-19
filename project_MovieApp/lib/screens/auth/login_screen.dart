@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../user/home_screen.dart';
+import '../admin/admin_home_screen.dart'; // Thêm import này
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -36,12 +37,19 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (errorMessage == null) {
-        // Đăng nhập thành công -> Vào Home
+        // Đăng nhập thành công -> Kiểm tra Role để điều hướng
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
+          if (authProvider.role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminHomeScreen()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
         }
       } else {
         // Đăng nhập thất bại -> Hiện lỗi thật từ Firebase trả về

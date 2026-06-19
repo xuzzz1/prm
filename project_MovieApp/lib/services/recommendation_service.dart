@@ -5,6 +5,11 @@ import '../models/scored_movie.dart';
 import '../models/recommendation_preference.dart';
 
 class RecommendationService {
+  // Singleton pattern to persist cache across widget rebuilds
+  static final RecommendationService _instance = RecommendationService._internal();
+  factory RecommendationService() => _instance;
+  RecommendationService._internal();
+
   final FirebaseDatabase _db = FirebaseDatabase.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -12,8 +17,14 @@ class RecommendationService {
 
   Future<RecommendationPreference?> get currentPrefs async {
     final user = _auth.currentUser;
-    if (user == null) return null;
-    if (_cachedPrefs != null) return _cachedPrefs;
+    if (user == null) {
+      _cachedPrefs = null;
+      return null;
+    }
+    // Check if cache exists and belongs to the current user
+    if (_cachedPrefs != null && _cachedPrefs!.userId == user.uid) {
+      return _cachedPrefs;
+    }
     return await fetchOrCreatePreferences(user.uid);
   }
 
@@ -29,6 +40,11 @@ class RecommendationService {
       }
     } catch (e) {
       print('Error loading recommendation prefs: $e');
+    }
+
+    // If not found in DB, return empty but check cache one last time
+    if (_cachedPrefs != null && _cachedPrefs!.userId == userId) {
+      return _cachedPrefs!;
     }
 
     _cachedPrefs = RecommendationPreference.empty(userId);
@@ -47,6 +63,19 @@ class RecommendationService {
 
   double _bump(double current, double delta) {
     return (current + delta).clamp(0.0, 1.0);
+  }
+
+  /// Làm giảm nhẹ tất cả các điểm sở thích hiện có để nhường chỗ cho sở thích mới
+  Map<String, double> _decay(Map<String, double> currentAffinities, {double factor = 0.9}) {
+    final updated = <String, double>{};
+    currentAffinities.forEach((key, value) {
+      // Giảm 10% điểm (factor = 0.9). Nếu điểm quá thấp (< 0.05) thì xóa luôn để lọc bớt rác
+      final newValue = value * factor;
+      if (newValue > 0.05) {
+        updated[key] = (newValue * 100).floorToDouble() / 100;
+      }
+    });
+    return updated;
   }
 
   Future<void> updateAffinityFromWatch(Movie movie, double percentWatched) async {
@@ -78,13 +107,17 @@ class RecommendationService {
       return;
     }
 
-    final categoryWeight = ((percentWatched * 0.2) * 10).floorToDouble() / 10;
-    final countryWeight  = ((percentWatched * 0.2) * 10).floorToDouble() / 10;
-    final actorWeight    = ((percentWatched * 0.2) * 10).floorToDouble() / 10;
+    // TĂNG ĐỘ NHẠY: Chỉ cần xem 1 chút (percentWatched > 0) là đã cộng điểm đáng kể
+    final baseBoost = percentWatched > 0.01 ? 0.3 : 0.1;
+    final categoryWeight = ((percentWatched * 0.4 + baseBoost) * 10).floorToDouble() / 10;
+    final countryWeight  = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
+    final actorWeight    = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
 
-    final updatedCategoryAffinity = Map<String, double>.from(prefs.categoryAffinity);
-    final updatedCountryAffinity = Map<String, double>.from(prefs.countryAffinity);
-    final updatedActorAffinity = Map<String, double>.from(prefs.actorAffinity);
+    // ÁP DỤNG DECAY: Giảm điểm tất cả trước khi cộng cho phim này
+    final updatedCategoryAffinity = _decay(Map<String, double>.from(prefs.categoryAffinity));
+    final updatedCountryAffinity = _decay(Map<String, double>.from(prefs.countryAffinity));
+    final updatedActorAffinity = _decay(Map<String, double>.from(prefs.actorAffinity));
+
     final updatedWatchedSlugs = List<String>.from(prefs.watchedSlugs)..add(movie.slug);
     final updatedWatchedMoviesCache = Map<String, Map<String, dynamic>>.from(prefs.watchedMoviesCache);
     updatedWatchedMoviesCache[movie.slug] = movie.toJson();
@@ -182,10 +215,21 @@ class RecommendationService {
       updatedActorAffinity[actor] = _bump(updatedActorAffinity[actor] ?? 0, weight * 0.5);
     }
 
+    final updatedRecentSlugs = List<String>.from(prefs.recentWatchedSlugs);
+    if (!updatedRecentSlugs.contains(movie.slug)) {
+      updatedRecentSlugs.insert(0, movie.slug);
+      if (updatedRecentSlugs.length > 20) updatedRecentSlugs.removeLast();
+    }
+    
+    final updatedCache = Map<String, Map<String, dynamic>>.from(prefs.watchedMoviesCache);
+    updatedCache[movie.slug] = movie.toJson();
+
     final updatedPrefs = prefs.copyWith(
       categoryAffinity: updatedCategoryAffinity,
       countryAffinity: updatedCountryAffinity,
       actorAffinity: updatedActorAffinity,
+      recentWatchedSlugs: updatedRecentSlugs,
+      watchedMoviesCache: updatedCache,
       lastUpdated: DateTime.now().millisecondsSinceEpoch,
     );
 
@@ -258,6 +302,55 @@ class RecommendationService {
     await _savePreferences(user.uid, updatedPrefs);
   }
 
+  /// Cập nhật sở thích ngay khi người dùng CLICK vào xem chi tiết phim
+  Future<void> updateAffinityFromClick(Movie movie) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final prefs = await fetchOrCreatePreferences(user.uid);
+    
+    // Nếu đã xem rồi thì không cộng điểm click nữa để tránh spam
+    if (prefs.watchedSlugs.contains(movie.slug)) return;
+
+    final weight = 0.4; // Tăng mạnh điểm để demo giáo viên thấy ngay sự thay đổi khi click
+
+    // ÁP DỤNG DECAY: Mỗi lần click phim mới, sở thích cũ sẽ bị mờ nhạt đi 10%
+    final updatedCategoryAffinity = _decay(Map<String, double>.from(prefs.categoryAffinity));
+    final updatedCountryAffinity = _decay(Map<String, double>.from(prefs.countryAffinity));
+    final updatedActorAffinity = _decay(Map<String, double>.from(prefs.actorAffinity));
+
+    for (var cat in movie.categories) {
+      updatedCategoryAffinity[cat] = _bump(updatedCategoryAffinity[cat] ?? 0, weight);
+    }
+    for (var country in movie.countries) {
+      updatedCountryAffinity[country] = _bump(updatedCountryAffinity[country] ?? 0, weight * 0.5);
+    }
+    for (var actor in movie.actors.take(3)) {
+      updatedActorAffinity[actor] = _bump(updatedActorAffinity[actor] ?? 0, weight * 0.5);
+    }
+
+    final updatedRecentSlugs = List<String>.from(prefs.recentWatchedSlugs);
+    if (!updatedRecentSlugs.contains(movie.slug)) {
+      updatedRecentSlugs.insert(0, movie.slug);
+      if (updatedRecentSlugs.length > 20) updatedRecentSlugs.removeLast();
+    }
+    
+    final updatedCache = Map<String, Map<String, dynamic>>.from(prefs.watchedMoviesCache);
+    updatedCache[movie.slug] = movie.toJson();
+
+    final updatedPrefs = prefs.copyWith(
+      categoryAffinity: updatedCategoryAffinity,
+      countryAffinity: updatedCountryAffinity,
+      actorAffinity: updatedActorAffinity,
+      recentWatchedSlugs: updatedRecentSlugs,
+      watchedMoviesCache: updatedCache,
+      lastUpdated: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    _cachedPrefs = updatedPrefs;
+    await _savePreferences(user.uid, updatedPrefs);
+  }
+
   void invalidateCache() {
     _cachedPrefs = null;
   }
@@ -310,9 +403,11 @@ class RecommendationService {
     final actors = _actorScore(movie, prefs);
     final freshness = _freshnessScore(movie);
 
-    final contentScore = (affinity * 0.5) + (country * 0.25) + (actors * 0.25);
-
-    final totalScore = (contentScore * 0.7) + (freshness * 0.2) + (trendingWeight * 0.1);
+    // TĂNG TRỌNG SỐ SỞ THÍCH (Content) và GIẢM TRỌNG SỐ ĐỘ MỚI (Freshness)
+    final contentScore = (affinity * 0.6) + (country * 0.2) + (actors * 0.2);
+    
+    // Content giờ chiếm 85%, Freshness chỉ chiếm 5%, Trending 10%
+    final totalScore = (contentScore * 0.85) + (freshness * 0.05) + (trendingWeight * 0.1);
 
     final reason = _generateMatchReason(movie, prefs, affinity, actors);
 
@@ -330,7 +425,8 @@ class RecommendationService {
 
   Future<List<ScoredMovie>> scoreMovies(List<Movie> movies, {double trendingWeight = 0.0}) async {
     final prefs = await currentPrefs;
-    if (prefs == null) {
+    if (prefs == null || (prefs.watchedSlugs.isEmpty && prefs.favoriteSlugs.isEmpty && prefs.categoryAffinity.isEmpty)) {
+      // NEW USER LOGIC: Show high-quality movies with generic labels
       return movies.map((m) => ScoredMovie(
         movie: m,
         totalScore: 0,
@@ -339,7 +435,7 @@ class RecommendationService {
         actorScore: 0,
         trendingScore: 0,
         freshnessScore: _freshnessScore(m),
-        matchReason: 'Vì bạn mới tham gia',
+        matchReason: m.year >= DateTime.now().year - 1 ? 'Phim mới' : 'Gợi ý cho bạn',
       )).toList();
     }
 
@@ -349,6 +445,18 @@ class RecommendationService {
     // Fall back to full list if too few unwatched movies remain
     final pool = unwatched.length < 5 ? movies : unwatched;
     final scored = pool.map((m) => scoreMovie(m, prefs, trendingWeight: trendingWeight)).toList();
+    
+    // EXISTING USER LOGIC: Filter out movies that have NO interest match
+    // Only keep movies where there is at least some affinity or actor score
+    final personalizedScored = scored.where((sm) => sm.affinityScore > 0 || sm.actorScore > 0).toList();
+    
+    // If we have personalized results, sort and return them
+    if (personalizedScored.isNotEmpty) {
+      personalizedScored.sort((a, b) => b.totalScore.compareTo(a.totalScore));
+      return personalizedScored;
+    }
+    
+    // Fallback if no specific match found, but still try to show movies related to the categories of the history
     scored.sort((a, b) => b.totalScore.compareTo(a.totalScore));
     return scored;
   }
@@ -356,33 +464,54 @@ class RecommendationService {
   String _generateMatchReason(Movie movie, RecommendationPreference prefs, double affinity, double actors) {
     final reasons = <String>[];
 
+    // 1. Tìm thể loại trùng khớp có điểm sở thích CAO NHẤT (không lấy bừa cái đầu tiên)
+    String? bestCat;
+    double maxStrength = 0;
+    
     for (var cat in movie.categories) {
       final strength = prefs.categoryAffinity[cat] ?? 0;
-      if (strength > 0.5) {
-        reasons.add('Yêu thích ${_formatCategory(cat)}');
-        break;
+      if (strength > maxStrength && strength > 0.4) {
+        maxStrength = strength;
+        bestCat = cat;
       }
     }
 
-    for (var actor in movie.actors.take(3)) {
-      final strength = prefs.actorAffinity[actor] ?? 0;
-      if (strength > 0.3) {
-        reasons.add('Thích phim của $actor');
-        break;
-      }
+    if (bestCat != null) {
+      reasons.add('Phim ${_formatCategory(bestCat)}');
     }
 
-    if (movie.year >= DateTime.now().year - 1) {
-      reasons.add('Phim mới');
-    }
-
+    // 2. Ưu tiên diễn viên yêu thích (> 0.3) nếu chưa có lý do thể loại mạnh
     if (reasons.isEmpty) {
-      if (affinity > 0.3) {
-        reasons.add('Phù hợp sở thích');
-      } else if (movie.year >= DateTime.now().year - 3) {
-        reasons.add('Phim mới');
+      for (var actor in movie.actors.take(3)) {
+        final strength = prefs.actorAffinity[actor] ?? 0;
+        if (strength > 0.3) {
+          reasons.add('Thích phim của $actor');
+          break;
+        }
+      }
+    }
+
+    // 3. Nếu chưa có lý do từ sở thích cụ thể, hiện thể loại đầu tiên của phim
+    if (reasons.isEmpty && movie.categoryNames.isNotEmpty) {
+      reasons.add(movie.categoryNames.values.first);
+    }
+
+    // 4. Cuối cùng mới là các nhãn mặc định (Chỉ hiện cho người dùng chưa có lịch sử)
+    if (reasons.isEmpty) {
+      final isNewUser = prefs.watchedSlugs.isEmpty && prefs.favoriteSlugs.isEmpty;
+      if (isNewUser) {
+        if (movie.year >= DateTime.now().year - 1) {
+          reasons.add('Phim mới cập nhật');
+        } else {
+          reasons.add('Gợi ý cho bạn');
+        }
       } else {
-        reasons.add('Phổ biến');
+        // Nếu đã xem phim rồi, hiện thể loại đầu tiên thay vì nhãn chung chung
+        if (movie.categoryNames.isNotEmpty) {
+           reasons.add(movie.categoryNames.values.first);
+        } else {
+           reasons.add('Dành cho bạn');
+        }
       }
     }
 

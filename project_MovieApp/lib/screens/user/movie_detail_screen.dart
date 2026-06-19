@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/review_provider.dart';
 import '../../models/review.dart';
 import '../../constants/api_constants.dart';
+import '../../services/recommendation_service.dart';
 import '../../widgets/movie_card.dart';
 
 class MovieDetailScreen extends StatefulWidget {
@@ -38,25 +39,66 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     });
   }
 
+  /// Gọi hàm này để cập nhật sở thích khi phim đã load xong đầy đủ metadata
+  void _trackClickAffinity(Movie fullMovie) {
+    RecommendationService().updateAffinityFromClick(fullMovie);
+  }
+
   void _playEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
     if (episodes.isEmpty) {
       _showPlayError("Dữ liệu tập phim chưa sẵn sàng.");
       return;
     }
 
-    // Find the first server + episode that has a valid m3u8 link
-    for (int s = 0; s < episodes.length; s++) {
-      for (int e = 0; e < episodes[s].serverData.length; e++) {
-        final episode = episodes[s].serverData[e];
-        if (episode.linkM3u8.isEmpty) continue;
-
-        _doPlayEpisode(episodes, s, e);
-        return;
+    // Nếu truyền svIdx = -1 và epIdx = -1, nghĩa là muốn Resume từ lịch sử
+    if (svIdx == -1 && epIdx == -1) {
+      final history = context.read<MovieProvider>().getHistoryForMovie(widget.movie.slug);
+      if (history != null && history.episodeName != null) {
+        bool found = false;
+        for (int s = 0; s < episodes.length; s++) {
+          for (int e = 0; e < episodes[s].serverData.length; e++) {
+            if (episodes[s].serverData[e].name == history.episodeName) {
+              svIdx = s;
+              epIdx = e;
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+      
+      // Nếu không tìm thấy trong lịch sử, mặc định về tập 1
+      if (svIdx == -1) {
+        svIdx = 0;
+        epIdx = 0;
       }
     }
 
-    // All episodes have empty links
-    _showPlayError("Không tìm thấy link phát hợp lệ cho phim này.");
+    if (svIdx < 0 || svIdx >= episodes.length) svIdx = 0;
+    
+    // Kiểm tra xem server hiện tại có dữ liệu không
+    final currentServer = episodes[svIdx];
+    if (epIdx < 0 || epIdx >= currentServer.serverData.length) {
+      _showPlayError("Tập phim không tồn tại.");
+      return;
+    }
+
+    final episode = currentServer.serverData[epIdx];
+    if (episode.linkM3u8.isEmpty) {
+      // Nếu tập này không có link, thử tìm link đầu tiên hợp lệ trong server này (fallback)
+      bool found = false;
+      for (int i = 0; i < currentServer.serverData.length; i++) {
+        if (currentServer.serverData[i].linkM3u8.isNotEmpty) {
+          _doPlayEpisode(episodes, svIdx, i);
+          found = true;
+          break;
+        }
+      }
+      if (!found) _showPlayError("Không tìm thấy link phát hợp lệ cho server này.");
+    } else {
+      _doPlayEpisode(episodes, svIdx, epIdx);
+    }
   }
 
   void _doPlayEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
@@ -124,6 +166,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   child: Text("Lỗi tải thông tin", style: TextStyle(color: Colors.white)));
             }
 
+            // TRIGGER: Chỉ cộng điểm khi đã load xong phim đầy đủ categories/actors
+            _trackClickAffinity(movie);
+
             return Column(
               children: [
                 // HEADER AREA
@@ -156,7 +201,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                 child: IconButton(
                                   icon: const Icon(Icons.play_circle_fill,
                                       color: Colors.amber, size: 64),
-                                  onPressed: () => _playEpisode(provider.episodes, 0, 0),
+                                  onPressed: () => _playEpisode(provider.episodes, -1, -1), // Resume từ lịch sử
                                 ),
                               ),
                             ],
@@ -257,7 +302,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   Widget _buildMovieInfo(Movie movie, List<EpisodeServer> episodes, PlayerProvider player) {
     final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
-    final currentEpName = isPlayingThis ? (player.currentEpisodeName ?? "1") : "1";
+    
+    // Lấy tên tập hiện tại: ưu tiên tập đang phát, sau đó đến lịch sử, cuối cùng là "1"
+    String currentEpName = "1";
+    if (isPlayingThis) {
+      currentEpName = player.currentEpisodeName ?? "1";
+    } else {
+      final history = context.read<MovieProvider>().getHistoryForMovie(widget.movie.slug);
+      if (history != null && history.episodeName != null) {
+        currentEpName = history.episodeName!;
+      }
+    }
 
     final genreNames = movie.categoryNames.values.join(', ');
     final primaryGenre = genreNames.split(',').first;
@@ -329,8 +384,40 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             Expanded(
               child: ElevatedButton(
                 onPressed: () {
-                  int nextIdx = isPlayingThis ? player.currentEpisodeIndex + 1 : 0;
-                  _playEpisode(episodes, isPlayingThis ? player.currentServerIndex : 0, nextIdx);
+                  int nextIdx = 0;
+                  int svIdx = 0;
+
+                  if (isPlayingThis) {
+                    nextIdx = player.currentEpisodeIndex + 1;
+                    svIdx = player.currentServerIndex;
+                  } else {
+                    // Nếu chưa phát, tìm tập tiếp theo dựa trên lịch sử
+                    final history = context.read<MovieProvider>().getHistoryForMovie(widget.movie.slug);
+                    if (history != null && history.episodeName != null) {
+                      bool found = false;
+                      for (int s = 0; s < episodes.length; s++) {
+                        for (int e = 0; e < episodes[s].serverData.length; e++) {
+                          if (episodes[s].serverData[e].name == history.episodeName) {
+                            svIdx = s;
+                            nextIdx = e + 1;
+                            found = true;
+                            break;
+                          }
+                        }
+                        if (found) break;
+                      }
+                    } else {
+                      // Nếu không có lịch sử, nút này đóng vai trò Play tập 1
+                      nextIdx = 0;
+                      svIdx = 0;
+                    }
+                  }
+                  
+                  if (nextIdx < episodes[svIdx].serverData.length) {
+                    _playEpisode(episodes, svIdx, nextIdx);
+                  } else {
+                    _showPlayError("Đã đến tập cuối cùng.");
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber,
@@ -453,7 +540,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         crossAxisCount: 3,
         mainAxisSpacing: 16,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.6,
+        childAspectRatio: 0.65,
       ),
       itemCount: provider.relatedMovies.length,
       itemBuilder: (context, index) {
