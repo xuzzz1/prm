@@ -1,7 +1,6 @@
 // lib/screens/user/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../../services/movie_service.dart';
@@ -31,9 +30,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Container(
       decoration: AppTheme.mainGradient,
-      child: Scaffold(
-        backgroundColor: Colors.transparent, // Để lộ nền gradient
-        appBar: _currentIndex == 0 
+        child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: _currentIndex == 0
             ? AppBar(
           title: const Text("MOVIE APP", style: TextStyle(letterSpacing: 4)),
           actions: [
@@ -44,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 8),
           ],
         )
-            : null, 
+            : null,
 
         body: IndexedStack(
           index: _currentIndex,
@@ -78,7 +77,7 @@ class _HomeTabBody extends StatefulWidget {
   State<_HomeTabBody> createState() => _HomeTabBodyState();
 }
 
-class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClientMixin {
+class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final MovieService movieService = MovieService();
   final RecommendationService recommendationService = RecommendationService();
   List<Movie> movies = [];
@@ -98,7 +97,22 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !isRecommendedLoading) {
+      recommendationService.invalidateCache();
+      _refreshRecommendations();
+    }
   }
 
   Future<void> _initializeData() async {
@@ -179,6 +193,18 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
         _movieBasedMovies = similar;
       });
     }
+  }
+
+  Future<void> _refreshRecommendations() async {
+    recommendationService.invalidateCache();
+    final prefs = await recommendationService.currentPrefs;
+    // Skip if nothing has changed since last load
+    if (prefs == null || prefs.categoryAffinity.isEmpty) return;
+    setState(() => _refreshCounter++);
+    await Future.wait([
+      _loadRecommendations(),
+      _loadMovieBasedSection(),
+    ]);
   }
 
   Future<void> _loadRecommendations() async {

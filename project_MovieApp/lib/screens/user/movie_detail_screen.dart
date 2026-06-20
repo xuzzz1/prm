@@ -27,6 +27,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   final Map<String, bool> _expandedReplies = {};
   MovieProvider? _movieProvider;
 
+  // Track which slugs have already triggered affinity click to prevent double-fire
+  final Set<String> _trackedClickSlugs = {};
+  final RecommendationService _recommendationService = RecommendationService();
+
   @override
   void initState() {
     super.initState();
@@ -38,8 +42,27 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant MovieDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.movie.slug != widget.movie.slug) {
+      Future.microtask(() {
+        _movieProvider = Provider.of<MovieProvider>(context, listen: false);
+        _movieProvider!.loadMovieDetail(widget.movie.slug);
+        Provider.of<ReviewProvider>(context, listen: false).fetchReviews(widget.movie.slug);
+        context.read<PlayerProvider>().setMovieProvider(_movieProvider!);
+      });
+    }
+  }
+
   void _trackClickAffinity(Movie fullMovie) {
-    RecommendationService().updateAffinityFromClick(fullMovie);
+    if (_trackedClickSlugs.contains(fullMovie.slug)) return;
+    _trackedClickSlugs.add(fullMovie.slug);
+    _recommendationService.updateAffinityFromClick(fullMovie);
+  }
+
+  void _onMovieDetailLoaded(Movie? movie) {
+    if (movie != null) _trackClickAffinity(movie);
   }
 
   void _playEpisode(List<EpisodeServer> episodes, int svIdx, int epIdx) {
@@ -113,7 +136,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             if (provider.isLoadingDetail) return const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber));
             final movie = provider.movieDetail;
             if (movie == null) return const Center(child: Text("Lỗi tải thông tin", style: TextStyle(color: Colors.white)));
-            _trackClickAffinity(movie);
+
+            // Fire once when detail first loads — _trackedClickSlugs prevents double-call
+            _onMovieDetailLoaded(movie);
 
             return Column(
               children: [

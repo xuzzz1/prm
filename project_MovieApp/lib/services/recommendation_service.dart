@@ -107,20 +107,20 @@ class RecommendationService {
       return;
     }
 
-    // TĂNG ĐỘ NHẠY: Chỉ cần xem 1 chút (percentWatched > 0) là đã cộng điểm đáng kể
-    final baseBoost = percentWatched > 0.01 ? 0.3 : 0.1;
-    final categoryWeight = ((percentWatched * 0.4 + baseBoost) * 10).floorToDouble() / 10;
-    final countryWeight  = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
-    final actorWeight    = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
+    final updatedWatchedSlugs = List<String>.from(prefs.watchedSlugs)..add(movie.slug);
+    final updatedWatchedMoviesCache = Map<String, Map<String, dynamic>>.from(prefs.watchedMoviesCache);
+    updatedWatchedMoviesCache[movie.slug] = movie.toJson();
 
     // ÁP DỤNG DECAY: Giảm điểm tất cả trước khi cộng cho phim này
     final updatedCategoryAffinity = _decay(Map<String, double>.from(prefs.categoryAffinity));
     final updatedCountryAffinity = _decay(Map<String, double>.from(prefs.countryAffinity));
     final updatedActorAffinity = _decay(Map<String, double>.from(prefs.actorAffinity));
 
-    final updatedWatchedSlugs = List<String>.from(prefs.watchedSlugs)..add(movie.slug);
-    final updatedWatchedMoviesCache = Map<String, Map<String, dynamic>>.from(prefs.watchedMoviesCache);
-    updatedWatchedMoviesCache[movie.slug] = movie.toJson();
+    // TĂNG ĐỘ NHẠY: Chỉ cần xem 1 chút (percentWatched > 0) là đã cộng điểm đáng kể
+    final baseBoost = percentWatched > 0.01 ? 0.3 : 0.1;
+    final categoryWeight = ((percentWatched * 0.4 + baseBoost) * 10).floorToDouble() / 10;
+    final countryWeight  = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
+    final actorWeight    = ((percentWatched * 0.2 + baseBoost * 0.5) * 10).floorToDouble() / 10;
 
     for (var cat in movie.categories) {
       updatedCategoryAffinity[cat] = _bump(updatedCategoryAffinity[cat] ?? 0, categoryWeight);
@@ -342,6 +342,7 @@ class RecommendationService {
       categoryAffinity: updatedCategoryAffinity,
       countryAffinity: updatedCountryAffinity,
       actorAffinity: updatedActorAffinity,
+      watchedSlugs: List<String>.from(prefs.watchedSlugs)..add(movie.slug),
       recentWatchedSlugs: updatedRecentSlugs,
       watchedMoviesCache: updatedCache,
       lastUpdated: DateTime.now().millisecondsSinceEpoch,
@@ -403,7 +404,7 @@ class RecommendationService {
     final actors = _actorScore(movie, prefs);
     final freshness = _freshnessScore(movie);
 
-    // TĂNG TRỌNG SỐ SỞ THÍCH (Content) và GIẢM TRỌNG SỐ ĐỘ MỚI (Freshness)
+    // TĂNG TRỌNG SỐ 
     final contentScore = (affinity * 0.6) + (country * 0.2) + (actors * 0.2);
     
     // Content giờ chiếm 85%, Freshness chỉ chiếm 5%, Trending 10%

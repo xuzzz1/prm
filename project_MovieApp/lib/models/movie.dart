@@ -59,12 +59,25 @@ class Movie {
       originName: json['origin_name'],
       content: json['content'],
       type: json['type'],
-      categories: _flattenToSlugs(json['category']),
-      categoryNames: _flattenToNameMap(json['category']),
-      countries: _flattenToSlugs(json['country']),
-      countryNames: _flattenToNameMap(json['country']),
-      actors: _flattenToStrings(json['actor']),
-      directors: _flattenToStrings(json['director']),
+      // Prefer flat lists written by toJson (movie cache); fall back to nested API format
+      categories: _fromFlatList(json['categories']).isNotEmpty
+          ? _fromFlatList(json['categories'])
+          : _flattenToSlugs(json['category']),
+      categoryNames: _fromFlatMap(json['category_names']).isNotEmpty
+          ? _fromFlatMap(json['category_names'])
+          : _flattenToNameMap(json['category']),
+      countries: _fromFlatList(json['countries']).isNotEmpty
+          ? _fromFlatList(json['countries'])
+          : _flattenToSlugs(json['country']),
+      countryNames: _fromFlatMap(json['country_names']).isNotEmpty
+          ? _fromFlatMap(json['country_names'])
+          : _flattenToNameMap(json['country']),
+      actors: _fromFlatList(json['actors']).isNotEmpty
+          ? _fromFlatList(json['actors'])
+          : _flattenToStrings(json['actor']),
+      directors: _fromFlatList(json['directors']).isNotEmpty
+          ? _fromFlatList(json['directors'])
+          : _flattenToStrings(json['director']),
       episodeTotal: json['episode_total']?.toString(),
       durationLabel: json['time']?.toString(),
       viewCount: json['view'] is int ? json['view'] : null,
@@ -78,6 +91,26 @@ class Movie {
   static List<String> _flattenToSlugs(dynamic field) {
     if (field == null) return [];
     return (field as List).map((e) => e['slug']?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+  }
+
+  /// Reads a flat List<String> from JSON (written by toJson, used in movie cache).
+  static List<String> _fromFlatList(dynamic field) {
+    if (field == null) return [];
+    if (field is List) {
+      return field.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+    }
+    return [];
+  }
+
+  /// Reads a flat Map<String, String> from JSON.
+  static Map<String, String> _fromFlatMap(dynamic field) {
+    if (field == null) return {};
+    if (field is Map) {
+      return Map<String, String>.from(field).map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      );
+    }
+    return {};
   }
 
   static Map<String, String> _flattenToNameMap(dynamic field) {
@@ -112,6 +145,12 @@ class Movie {
       'duration': playbackDuration,
       'episode_name': episodeName,
       'last_watched_timestamp': lastWatchedTimestamp,
+      'categories': categories,
+      'category_names': categoryNames,
+      'countries': countries,
+      'country_names': countryNames,
+      'actors': actors,
+      'directors': directors,
     };
   }
 }
