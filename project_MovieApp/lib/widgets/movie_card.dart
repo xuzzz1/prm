@@ -1,21 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/movie.dart';
-import '../constants/api_constants.dart';
-import '../providers/movie_provider.dart';
 import '../screens/user/movie_detail_screen.dart';
+import '../constants/api_constants.dart';
+import '../themes/app_theme.dart';
 
 class MovieCard extends StatelessWidget {
   final Movie movie;
-  final double width;
   final String? matchReason;
 
-  const MovieCard({
-    super.key,
-    required this.movie,
-    this.width = 120,
-    this.matchReason,
-  });
+  const MovieCard({super.key, required this.movie, this.matchReason});
 
   @override
   Widget build(BuildContext context) {
@@ -29,126 +22,104 @@ class MovieCard extends StatelessWidget {
         );
       },
       child: Container(
-        width: width,
-        // Tạo bo góc và đổ bóng cho cả thẻ
+        width: 120,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 0.65, // Tỉ lệ poster chuẩn
-            child: Stack(
-              children: [
-                // 1. Lớp Nền: Ảnh Poster
-                Positioned.fill(
-                  child: Image.network(
-                    ApiConstants.getImageUrl(movie.thumbUrl),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      color: Colors.grey[900],
-                      child: const Icon(Icons.movie, color: Colors.white24, size: 40),
-                    ),
-                  ),
-                ),
-
-                // 2. Lớp Phủ: Gradient đen mờ để nổi bật chữ
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.1),
-                          Colors.black.withOpacity(0.7),
-                          Colors.black.withOpacity(0.95),
-                        ],
-                        stops: const [0.0, 0.4, 0.75, 1.0],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Hero(
+                    tag: 'movie_${movie.slug}_${hashCode}',
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.network(
+                        ApiConstants.getImageUrl(movie.thumbUrl),
+                        fit: BoxFit.cover,
+                        width: 120,
+                        height: 180,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: AppTheme.secondaryAnthracite,
+                          child: const Icon(Icons.movie_rounded, color: Colors.white24),
+                        ),
                       ),
                     ),
                   ),
-                ),
-
-                // 3. Lớp Chữ: Thông tin phim nằm đè lên ảnh
-                Positioned(
-                  left: 8,
-                  right: 8,
-                  bottom: 8,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        movie.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                  // Màn chắn gradient nhẹ ở dưới để text dễ đọc
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.5),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Rating Badge hoặc Year
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryAmber,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        movie.year.toString(),
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        matchReason ?? movie.year.toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: matchReason != null ? Colors.amber : Colors.grey[400],
+                          color: Colors.black,
                           fontSize: 10,
-                          fontWeight: matchReason != null ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-
-                // 4. Lớp Tương tác: Nút Yêu thích
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Consumer<MovieProvider>(
-                    builder: (context, movieProv, _) {
-                      final isFav = movieProv.isFavorite(movie.slug);
-                      return GestureDetector(
-                        onTap: () {
-                          movieProv.toggleFavorite(movie);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(isFav ? "Đã xóa khỏi yêu thích" : "Đã thêm vào yêu thích"),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.4),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isFav ? Icons.favorite : Icons.favorite_border,
-                            color: isFav ? Colors.red : Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(
+              movie.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (matchReason != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  matchReason!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.primaryAmber,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

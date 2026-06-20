@@ -8,6 +8,7 @@ import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
 import 'providers/admin_provider.dart'; // Thêm import
+import 'screens/auth/splash_screen.dart'; // Thêm import mới
 import 'screens/auth/login_screen.dart';
 import 'themes/app_theme.dart';
 
@@ -43,7 +44,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Movie App',
       theme: AppTheme.darkTheme,
-      home: const LoginScreen(),
+      home: const SplashScreen(), // Thay đổi từ LoginScreen sang SplashScreen
     );
   }
 }

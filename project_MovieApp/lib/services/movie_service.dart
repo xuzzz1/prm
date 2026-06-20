@@ -5,15 +5,21 @@ import '../models/movie.dart';
 
 class MovieService {
   Future<List<Movie>> fetchTrendingMovies() async {
-    final url = Uri.parse(
-      '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1',
-    );
+    try {
+      final url = Uri.parse(
+        '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1',
+      );
 
-    final response = await http.get(url);
-    final data = jsonDecode(response.body);
-    final List items = data['items'];
-
-    return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List items = data['items'] ?? [];
+        return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
+      }
+    } catch (e) {
+      print('Error fetching trending movies: $e');
+    }
+    return [];
   }
 
   Future<List<Movie>> fetchAllMovies({int pages = 3}) async {

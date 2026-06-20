@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/admin_provider.dart';
+import '../../models/app_user.dart';
 import '../auth/login_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
@@ -14,6 +15,14 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _bannerSlugController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  // Design Constants
+  final Color _bgDark = const Color(0xFF0D0D0D); // Anthracite Background
+  final Color _cardColor = const Color(0xFF1A1A1A); // Secondary Dark Gray
+  final Color _accentColor = Colors.amber;
+  final double _screenPadding = 20.0;
+  final double _cardRadius = 24.0;
 
   @override
   void initState() {
@@ -28,85 +37,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
   void dispose() {
     _tabController.dispose();
     _bannerSlugController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _bgDark,
       body: SafeArea(
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: const Color(0xFF1A1A1A),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                      onPressed: () async {
-                        await authProvider.logout();
-                        if (mounted) {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LoginScreen()),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Text(
-                    "Admin Panel",
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.amber.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.shield_outlined, color: Colors.amber, size: 16),
-                        SizedBox(width: 4),
-                        Text("ADMIN", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Tabs
-            TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              labelColor: Colors.amber,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.amber,
-              indicatorSize: TabBarIndicatorSize.label,
-              tabs: const [
-                Tab(text: "Thống kê"),
-                Tab(text: "Người dùng"),
-                Tab(text: "Phim"),
-              ],
-            ),
-
-            // Tab View
+            _buildModernHeader(),
+            _buildSlimTabBar(),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
                   _buildStatisticsTab(),
-                  const Center(child: Text("Quản lý Người dùng (Đang phát triển)", style: TextStyle(color: Colors.white))),
+                  _buildUserManagementTab(),
                   _buildMovieManagementTab(),
                 ],
               ),
@@ -117,335 +66,295 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildMovieManagementTab() {
-    final adminProvider = Provider.of<AdminProvider>(context);
+  Widget _buildModernHeader() {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final adminProvider = Provider.of<AdminProvider>(context, listen: false);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(_screenPadding, 24, _screenPadding, 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Cấu hình Banner (Slider)",
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _bannerSlugController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: "Nhập slug phim mới",
-                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                    filled: true,
-                    fillColor: const Color(0xFF1A1A1A),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: adminProvider.isLoading
-                    ? null
-                    : () async {
-                        if (_bannerSlugController.text.isNotEmpty) {
-                          final error = await adminProvider.addBanner(_bannerSlugController.text.trim());
-                          if (error != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
-                          } else {
-                            _bannerSlugController.clear();
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Đã thêm banner thành công!")));
-                          }
-                        }
-                      },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                child: adminProvider.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add, color: Colors.black),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            "Bảng Banner hiện tại",
-            style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          // Bảng hiện banner đang để slug gì
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D0D0D),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.withOpacity(0.1)),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: adminProvider.bannerSlugs.isEmpty ? 1 : adminProvider.bannerSlugs.length,
-              separatorBuilder: (context, index) => Divider(color: Colors.grey.withOpacity(0.1), height: 1),
-              itemBuilder: (context, index) {
-                if (adminProvider.bannerSlugs.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text("Chưa có banner nào", style: TextStyle(color: Colors.grey)),
-                  );
-                }
-                final slug = adminProvider.bannerSlugs[index];
-                return ListTile(
-                  leading: const Icon(Icons.view_carousel_outlined, color: Colors.amber),
-                  title: Text(slug, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                    onPressed: () => adminProvider.removeBanner(slug),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            "Danh sách API (Slug gợi ý)",
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          // Danh sách slug từ API
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: adminProvider.recentMovies.length,
-            itemBuilder: (context, index) {
-              final movie = adminProvider.recentMovies[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
+              // Avatar on the left
+              Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _accentColor.withValues(alpha: 0.2), width: 2),
                 ),
-                child: Row(
+                child: CircleAvatar(
+                  radius: 26,
+                  backgroundColor: _cardColor,
+                  child: Icon(Icons.person_rounded, color: _accentColor, size: 28),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Welcome text / Admin title
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D0D),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.movie_outlined, color: Colors.amber, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(movie.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          const SizedBox(height: 2),
-                          Text("Slug: ${movie.slug}", style: const TextStyle(color: Colors.amber, fontSize: 12)),
-                        ],
+                    Text(
+                      "QUẢN TRỊ VIÊN",
+                      style: TextStyle(
+                        color: _accentColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.copy, color: Colors.grey, size: 18),
-                      onPressed: () {
-                        _bannerSlugController.text = movie.slug;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text("Đã chọn slug: ${movie.slug}"),
-                          duration: const Duration(seconds: 1),
-                        ));
-                      },
+                    const SizedBox(height: 2),
+                    Text(
+                      authProvider.currentUser?.displayName ?? "Admin",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              // Action icons (settings / logout) on the right
+              Row(
+                children: [
+                  _buildHeaderAction(
+                    icon: Icons.refresh_rounded,
+                    onTap: () => adminProvider.fetchAdminData(),
+                  ),
+                  const SizedBox(width: 12),
+                  _buildHeaderAction(
+                    icon: Icons.logout_rounded,
+                    color: Colors.redAccent,
+                    onTap: () async {
+                      await authProvider.logout();
+                      if (mounted) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildAdminActionTile(String title, IconData icon, VoidCallback onTap) {
-    return ListTile(
+  Widget _buildHeaderAction({required IconData icon, required VoidCallback onTap, Color? color}) {
+    return InkWell(
       onTap: onTap,
-      leading: Icon(icon, color: Colors.amber),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      contentPadding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Icon(icon, color: color ?? Colors.white.withValues(alpha: 0.7), size: 20),
+      ),
     );
   }
 
+  Widget _buildSlimTabBar() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: _screenPadding),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1)),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicatorSize: TabBarIndicatorSize.label,
+        indicatorColor: _accentColor,
+        indicatorWeight: 3,
+        labelColor: _accentColor,
+        unselectedLabelColor: Colors.grey.withValues(alpha: 0.8),
+        dividerColor: Colors.transparent,
+        labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        tabs: const [
+          Tab(text: "Thống kê"),
+          Tab(text: "Người dùng"),
+          Tab(text: "Phim"),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 1: STATISTICS ---
   Widget _buildStatisticsTab() {
+    final adminProvider = Provider.of<AdminProvider>(context);
+    final stats = adminProvider.stats;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(_screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Main Stats Grid
+          _buildSectionTitle("Tổng quan hệ thống"),
+          const SizedBox(height: 16),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             mainAxisSpacing: 16,
             crossAxisSpacing: 16,
-            childAspectRatio: 1.2,
+            childAspectRatio: 1.1,
             children: [
               _buildStatCard(
-                icon: Icons.people_outline,
                 title: "Người dùng",
-                value: "1,248",
-                subValue: "5 đang hoạt động",
+                value: stats['users'] ?? "0",
+                icon: Icons.people_alt_outlined,
                 color: Colors.blue,
               ),
               _buildStatCard(
-                icon: Icons.movie_outlined,
                 title: "Bộ phim",
-                value: "16",
-                subValue: "+3 tuần này",
-                color: Colors.amber,
+                value: stats['movies'] ?? "0",
+                icon: Icons.movie_filter_outlined,
+                color: _accentColor,
               ),
               _buildStatCard(
-                icon: Icons.visibility_outlined,
-                title: "Tổng lượt xem",
-                value: "33.9M",
-                subValue: "+24.3K hôm nay",
+                title: "Lượt xem",
+                value: stats['views'] ?? "0",
+                icon: Icons.remove_red_eye_outlined,
                 color: Colors.orange,
               ),
               _buildStatCard(
-                icon: Icons.trending_up,
-                title: "Đang xem",
-                value: "3,842",
-                subValue: "Người xem trực tiếp",
+                title: "Trực tuyến",
+                value: stats['active_now'] ?? "0",
+                icon: Icons.sensors_rounded,
                 color: Colors.green,
               ),
             ],
           ),
-
           const SizedBox(height: 32),
-          const Text(
-            "Top phim theo lượt xem",
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
+          _buildSectionTitle("Top phim xu hướng"),
           const SizedBox(height: 16),
-
-          // Chart Section
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D0D0D),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              children: [
-                _buildChartBar("Thiên Quan", 0.9),
-                _buildChartBar("Vết Thương", 0.7),
-                _buildChartBar("Đấu Phá", 0.65),
-                _buildChartBar("Quang Âm", 0.4),
-                _buildChartBar("Tình Yêu", 0.35),
-                _buildChartBar("Long Tranh", 0.3),
-                _buildChartBar("Hoa Thiên", 0.25),
-                _buildChartBar("Chiến Dịch", 0.2),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text("0M", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                    Text("2M", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                    Text("4M", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                    Text("6M", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                    Text("8M", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                  ],
-                )
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Bottom Stats
-          Row(
-            children: [
-              Expanded(child: _buildSmallStatCard("517", "Tập phim")),
-              const SizedBox(width: 12),
-              Expanded(child: _buildSmallStatCard("7", "Thể loại")),
-              const SizedBox(width: 12),
-              Expanded(child: _buildSmallStatCard("8.2★", "Đánh giá TB")),
-            ],
-          ),
-          const SizedBox(height: 20),
+          _buildModernChartCard(),
+          const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required String subValue,
-    required Color color,
-  }) {
+  Widget _buildStatCard({required String title, required String value, required IconData icon, required Color color}) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0D0D),
-        borderRadius: BorderRadius.circular(24),
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(_cardRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: Colors.grey, size: 18),
-              const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              Text(
+                value,
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                title,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+              ),
             ],
           ),
-          const Spacer(),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(subValue, style: const TextStyle(color: Colors.grey, fontSize: 11)),
         ],
       ),
     );
   }
 
-  Widget _buildChartBar(String label, double percentage) {
+  Widget _buildModernChartCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(_cardRadius),
+      ),
+      child: Column(
+        children: [
+          _buildChartRow("Thiên Quan", 0.9, Colors.amber),
+          _buildChartRow("Vết Thương", 0.7, Colors.orange),
+          _buildChartRow("Đấu Phá", 0.65, Colors.blue),
+          _buildChartRow("Quang Âm", 0.4, Colors.green),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(
+              5,
+              (i) => Text(
+                "${i * 2}M",
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartRow(String label, double percentage, Color color) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           SizedBox(
             width: 80,
             child: Text(
               label,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Stack(
               children: [
                 Container(
-                  height: 16,
+                  height: 10,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(4),
+                    color: _bgDark,
+                    borderRadius: BorderRadius.circular(5),
                   ),
                 ),
-                FractionallySizedBox(
-                  widthFactor: percentage,
-                  child: Container(
-                    height: 16,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.amber.withOpacity(0.8),
-                          Colors.amber.withOpacity(0.4),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(4),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeOutCubic,
+                  width: MediaQuery.of(context).size.width * 0.5 * percentage,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color, color.withValues(alpha: 0.5)],
                     ),
+                    borderRadius: BorderRadius.circular(5),
+                    boxShadow: [
+                      BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2)),
+                    ],
                   ),
                 ),
               ],
@@ -456,18 +365,431 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildSmallStatCard(String value, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D0D0D),
-        borderRadius: BorderRadius.circular(20),
+  // --- TAB 2: USER MANAGEMENT ---
+  Widget _buildUserManagementTab() {
+    final adminProvider = Provider.of<AdminProvider>(context);
+    final users = adminProvider.users;
+
+    if (users.isEmpty && !adminProvider.isLoading) {
+      return _buildEmptyState(Icons.group_off_rounded, "Chưa có người dùng nào được tìm thấy");
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => adminProvider.fetchAdminData(),
+      color: _accentColor,
+      backgroundColor: _cardColor,
+      child: ListView.builder(
+        padding: EdgeInsets.all(_screenPadding),
+        itemCount: users.length,
+        itemBuilder: (context, index) {
+          final user = users[index];
+          final isAdmin = user.role == 'admin';
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(_cardRadius),
+              border: Border.all(
+                color: isAdmin ? _accentColor.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isAdmin ? _accentColor : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: CircleAvatar(
+                    backgroundColor: isAdmin ? _accentColor.withValues(alpha: 0.1) : _bgDark,
+                    child: Icon(
+                      isAdmin ? Icons.shield_rounded : Icons.person_rounded,
+                      color: isAdmin ? _accentColor : Colors.white70,
+                      size: 20,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.name,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      Text(
+                        user.email,
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isAdmin ? _accentColor.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          user.role.toUpperCase(),
+                          style: TextStyle(
+                            color: isAdmin ? _accentColor : Colors.grey,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildIconButton(
+                      icon: Icons.manage_accounts_rounded,
+                      color: isAdmin ? _accentColor : Colors.white.withValues(alpha: 0.4),
+                      onTap: () => _showRoleDialog(user),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildIconButton(
+                      icon: Icons.delete_outline_rounded,
+                      color: Colors.redAccent,
+                      onTap: () => _showDeleteDialog(user),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
+    );
+  }
+
+  // --- TAB 3: MOVIE MANAGEMENT ---
+  Widget _buildMovieManagementTab() {
+    final adminProvider = Provider.of<AdminProvider>(context);
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(_screenPadding),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          _buildSectionTitle("Cấu hình Banner"),
+          const SizedBox(height: 16),
+          _buildModernInput(
+            controller: _bannerSlugController,
+            hint: "Nhập slug phim mới...",
+            suffix: adminProvider.isLoading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : _buildIconButton(
+                    icon: Icons.add_rounded,
+                    color: Colors.black,
+                    bgColor: _accentColor,
+                    onTap: () async {
+                      if (_bannerSlugController.text.isNotEmpty) {
+                        final slug = _bannerSlugController.text.trim();
+                        final error = await adminProvider.addBanner(slug);
+                        if (!mounted) return;
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                          );
+                        } else {
+                          _bannerSlugController.clear();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Đã thêm banner thành công!")),
+                          );
+                        }
+                      }
+                    },
+                  ),
+          ),
+          const SizedBox(height: 24),
+          _buildModernCardList(
+            items: adminProvider.bannerSlugs,
+            emptyMessage: "Chưa có banner nào",
+            onDelete: (slug) => adminProvider.removeBanner(slug),
+          ),
+          const SizedBox(height: 32),
+          _buildSectionTitle("Danh sách & Tìm kiếm"),
+          const SizedBox(height: 16),
+          _buildModernInput(
+            controller: _searchController,
+            hint: "Tìm phim để ẩn hoặc lấy slug...",
+            prefixIcon: Icons.search_rounded,
+            onChanged: (v) => adminProvider.searchMovies(v),
+          ),
+          const SizedBox(height: 16),
+          _buildMovieManagementList(adminProvider),
+          
+          // PHẦN KHÔI PHỤC: Hiển thị danh sách phim đang bị ẩn
+          if (adminProvider.hiddenSlugs.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            _buildSectionTitle("Phim đang bị ẩn"),
+            const SizedBox(height: 16),
+            _buildModernCardList(
+              items: adminProvider.hiddenSlugs,
+              emptyMessage: "",
+              onDelete: (slug) => adminProvider.toggleHideMovie(slug),
+            ),
+          ],
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovieManagementList(AdminProvider provider) {
+    if (provider.recentMovies.isEmpty && !provider.isLoading) {
+      return _buildEmptyState(Icons.movie_rounded, "Không tìm thấy phim nào");
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: provider.recentMovies.length,
+      itemBuilder: (context, index) {
+        final movie = provider.recentMovies[index];
+        final isHidden = provider.hiddenSlugs.contains(movie.slug);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _bgDark,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isHidden ? Icons.visibility_off_rounded : Icons.movie_outlined,
+                  color: isHidden ? Colors.redAccent : _accentColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.name,
+                      style: TextStyle(
+                        color: isHidden ? Colors.white.withValues(alpha: 0.3) : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        decoration: isHidden ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Slug: ${movie.slug}",
+                      style: TextStyle(color: _accentColor.withValues(alpha: 0.6), fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  _buildIconButton(
+                    icon: isHidden ? Icons.visibility_off : Icons.visibility,
+                    color: isHidden ? Colors.redAccent : Colors.white.withValues(alpha: 0.4),
+                    onTap: () => provider.toggleHideMovie(movie.slug),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildIconButton(
+                    icon: Icons.copy_rounded,
+                    color: Colors.white.withValues(alpha: 0.4),
+                    onTap: () {
+                      _bannerSlugController.text = movie.slug;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Đã chọn slug: ${movie.slug}"), duration: const Duration(seconds: 1)),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- REUSABLE COMPONENTS ---
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+    );
+  }
+
+  Widget _buildModernInput({
+    required TextEditingController controller,
+    required String hint,
+    Widget? suffix,
+    IconData? prefixIcon,
+    Function(String)? onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+          prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: _accentColor, size: 20) : null,
+          suffixIcon: suffix,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernCardList({
+    required List<String> items,
+    required String emptyMessage,
+    required Function(String) onDelete,
+  }) {
+    if (items.isEmpty) return _buildEmptyState(Icons.hourglass_empty_rounded, emptyMessage);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(_cardRadius),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => Divider(color: Colors.white.withValues(alpha: 0.05), height: 1),
+        itemBuilder: (context, index) {
+          final slug = items[index];
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            leading: Icon(Icons.layers_outlined, color: _accentColor, size: 20),
+            title: Text(slug, style: const TextStyle(color: Colors.white, fontSize: 14)),
+            trailing: _buildIconButton(
+              icon: Icons.remove_circle_outline_rounded,
+              color: Colors.redAccent,
+              onTap: () => onDelete(slug),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildIconButton({required IconData icon, required VoidCallback onTap, Color? color, Color? bgColor}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: bgColor ?? Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color ?? Colors.white, size: 18),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(IconData icon, String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.white.withValues(alpha: 0.1), size: 64),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- DIALOGS (Preserving logic as requested) ---
+  void _showRoleDialog(AppUser user) {
+    final adminProvider = Provider.of<AdminProvider>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Thay đổi quyền hạn", style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: Text(
+          "Bạn có muốn đổi quyền của ${user.name} thành ${user.role == 'admin' ? 'USER' : 'ADMIN'} không?",
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("HỦY", style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () {
+              adminProvider.toggleUserRole(user);
+              Navigator.pop(context);
+            },
+            child: Text("XÁC NHẬN", style: TextStyle(color: _accentColor, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDialog(AppUser user) {
+    final adminProvider = Provider.of<AdminProvider>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Xóa người dùng", style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: Text(
+          "Hành động này sẽ xóa ${user.name} khỏi Database. Bạn chắc chắn chứ?",
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("HỦY", style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () {
+              adminProvider.deleteUser(user.uid);
+              Navigator.pop(context);
+            },
+            child: const Text("XÓA", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );

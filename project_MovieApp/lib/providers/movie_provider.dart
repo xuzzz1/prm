@@ -23,6 +23,8 @@ class MovieProvider extends ChangeNotifier {
   List<Movie> _favoriteMovies = [];
   // Danh sách lịch sử xem phim
   List<Movie> _watchHistory = [];
+  // Danh sách slug bị ẩn từ Admin
+  Set<String> _hiddenSlugs = {};
 
   Movie? get movieDetail => _movieDetail;
   List<EpisodeServer> get episodes => _episodes;
@@ -30,10 +32,12 @@ class MovieProvider extends ChangeNotifier {
   bool get isLoadingDetail => _isLoadingDetail;
   List<Movie> get favoriteMovies => _favoriteMovies;
   List<Movie> get watchHistory => _watchHistory;
+  Set<String> get hiddenSlugs => _hiddenSlugs;
 
   MovieProvider() {
     loadFavorites(); // Tự động tải danh sách phim đã lưu khi khởi tạo app
     loadWatchHistory(); // Tải lịch sử xem phim
+    loadHiddenSlugs(); // Tải danh sách phim bị ẩn
     
     // Lắng nghe khi user đăng nhập/đăng xuất để sync Firebase
     _auth.authStateChanges().listen((user) {
@@ -78,6 +82,26 @@ class MovieProvider extends ChangeNotifier {
 
     _isLoadingDetail = false;
     notifyListeners();
+  }
+
+  // --- LOGIC XỬ LÝ PHIM BỊ ẨN (HIDDEN MOVIES) ---
+
+  void loadHiddenSlugs() {
+    _db.ref('settings/hidden_movies').onValue.listen((event) {
+      if (event.snapshot.exists) {
+        final Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
+        _hiddenSlugs = data.keys.cast<String>().toSet();
+      } else {
+        _hiddenSlugs = {};
+      }
+      notifyListeners();
+    });
+  }
+
+  // Hàm helper để lọc phim bị ẩn
+  List<Movie> filterHiddenMovies(List<Movie> movies) {
+    if (_hiddenSlugs.isEmpty) return movies;
+    return movies.where((m) => !_hiddenSlugs.contains(m.slug)).toList();
   }
 
   // --- LOGIC XỬ LÝ SHAREDPREFERENCES (FAVORITE) ---

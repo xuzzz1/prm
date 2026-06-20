@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // Thêm import
 import '../../services/movie_service.dart';
 import '../../services/search_service.dart';
 import '../../services/recommendation_service.dart';
 import '../../models/movie.dart';
+import '../../providers/movie_provider.dart'; // Thêm import
 import '../../widgets/movie_card.dart';
 import 'movie_detail_screen.dart';
 
@@ -35,9 +37,14 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => _isLoading = true);
     final history = await _searchService.getHistory();
     final trending = await _movieService.fetchTrendingMovies();
+    
+    // Lọc phim trending
+    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+    final filteredTrending = movieProvider.filterHiddenMovies(trending);
+
     setState(() {
       _history = history;
-      _trendingMovies = trending.take(5).toList();
+      _trendingMovies = filteredTrending.take(5).toList();
       _isLoading = false;
     });
   }
@@ -52,11 +59,16 @@ class _SearchScreenState extends State<SearchScreen> {
 
     await _searchService.addSearchTerm(query);
     _recommendationService.updateAffinityFromSearch(query);
+    
     final results = await _movieService.searchMovies(query);
     final history = await _searchService.getHistory();
 
+    // LỌC Ở ĐÂY: Loại bỏ những phim Admin đã ẩn
+    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+    final filteredResults = movieProvider.filterHiddenMovies(results);
+
     setState(() {
-      _searchResults = results;
+      _searchResults = filteredResults;
       _history = history;
       _isLoading = false;
     });

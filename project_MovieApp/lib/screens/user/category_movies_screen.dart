@@ -1,6 +1,8 @@
 // lib/screens/user/category_movies_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // Thêm import
 import '../../models/movie.dart';
+import '../../providers/movie_provider.dart'; // Thêm import
 import '../../services/movie_service.dart';
 import '../../widgets/movie_card.dart';
 
@@ -43,9 +45,13 @@ class _CategoryMoviesScreenState extends State<CategoryMoviesScreen> {
       result = await _movieService.fetchMoviesByCategory(widget.categorySlug, _currentPage);
     }
 
+    // LỌC PHIM ẨN
+    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+    final filteredMovies = movieProvider.filterHiddenMovies(result['movies'] ?? []);
+
     setState(() {
-      _movies = result['movies'];
-      _totalPages = result['totalPages'];
+      _movies = filteredMovies;
+      _totalPages = result['totalPages'] ?? 1;
       _isLoading = false;
     });
   }

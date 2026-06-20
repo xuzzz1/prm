@@ -31,17 +31,38 @@ class AuthProvider extends ChangeNotifier {
     // Nếu là tài khoản admin đặc biệt thì gán role admin luôn
     if (_user?.email == 'admin@gmail.com') {
       _role = 'admin';
+      // Đảm bảo admin cũng có trong DB để đếm thống kê và hiện đúng label
+      try {
+        await _db.ref('users/$uid').update({
+          'name': 'Hệ thống Admin',
+          'email': _user!.email,
+          'role': 'admin',
+        });
+      } catch (e) {
+        debugPrint("DEBUG: Error updating Admin in DB: $e");
+      }
       return;
     }
 
     try {
-      final snapshot = await _db.ref('users/$uid/role').get();
+      final snapshot = await _db.ref('users/$uid').get();
       if (snapshot.exists) {
-        _role = snapshot.value.toString();
+        _role = (snapshot.value as Map)['role']?.toString() ?? 'user';
       } else {
+        // NẾU USER CÓ TRONG AUTH NHƯNG CHƯA CÓ TRONG DB (NHƯ HÌNH BẠN CHỤP)
+        // Tự động tạo bản ghi mới để Admin có thể thấy
         _role = 'user';
+        if (_user != null) {
+          await _db.ref('users/$uid').set({
+            'name': _user!.displayName ?? 'Người dùng mới',
+            'email': _user!.email,
+            'role': 'user',
+          });
+          debugPrint("DEBUG: Auto-created DB entry for existing Auth user: $uid");
+        }
       }
     } catch (e) {
+      debugPrint("DEBUG: Error in fetchUserRole: $e");
       _role = 'user';
     }
   }
@@ -92,11 +113,16 @@ class AuthProvider extends ChangeNotifier {
       if (credential.user != null) {
         await credential.user!.updateDisplayName(name);
         
+        debugPrint("DEBUG: Attempting to save user to DB: ${credential.user!.uid}");
         // Lưu role mặc định là user vào Database
         await _db.ref('users/${credential.user!.uid}').set({
           'name': name,
           'email': email,
           'role': 'user',
+        }).then((_) {
+          debugPrint("DEBUG: User saved successfully to DB");
+        }).catchError((error) {
+          debugPrint("DEBUG: Error saving user to DB: $error");
         });
         
         _role = 'user';
