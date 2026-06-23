@@ -7,9 +7,9 @@ import 'providers/movie_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
-import 'providers/admin_provider.dart'; // Thêm import
-import 'screens/auth/splash_screen.dart'; // Thêm import mới
-import 'screens/auth/login_screen.dart';
+import 'providers/admin_provider.dart';
+import 'providers/download_provider.dart';
+import 'screens/auth/splash_screen.dart';
 import 'themes/app_theme.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -28,6 +28,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => ReviewProvider()),
         ChangeNotifierProvider(create: (_) => AdminProvider()), // Thêm provider
+        ChangeNotifierProvider(create: (_) => DownloadProvider()), // Thêm provider
       ],
       child: const MyApp(),
     ),

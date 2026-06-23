@@ -6,10 +6,12 @@ import '../auth/login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
 import 'history_screen.dart';
+import 'downloads_screen.dart';
 import '../../models/movie.dart';
 import '../../constants/api_constants.dart';
 import 'movie_detail_screen.dart';
 import '../../providers/movie_provider.dart';
+import '../../providers/download_provider.dart';
 import '../../themes/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -57,6 +59,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             children: [
               _buildUserInfo(authProvider),
               const SizedBox(height: 32),
+              _buildDownloadsSection(),
+              const SizedBox(height: 32),
               _buildHistorySection(),
               const SizedBox(height: 32),
               _buildMenuSection(context, authProvider),
@@ -88,6 +92,144 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         const SizedBox(height: 4),
         Text(authProvider.currentUser?.email ?? "", style: const TextStyle(color: Colors.grey, fontSize: 14)),
       ],
+    );
+  }
+
+  Widget _buildDownloadsSection() {
+    return Consumer<DownloadProvider>(
+      builder: (context, downloadProvider, _) {
+        if (downloadProvider.downloadedMovies.isEmpty) return const SizedBox();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("PHIM ĐÃ TẢI", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  GestureDetector(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+                    child: const Text("Xem tất cả", style: TextStyle(color: AppTheme.primaryAmber, fontSize: 12)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Storage info
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.secondaryAnthracite,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryAmber.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.download_done_rounded, color: AppTheme.primaryAmber, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${downloadProvider.downloadedMovies.length} phim',
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Dung lượng: ${downloadProvider.formattedTotalStorage}',
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Quick access to downloaded movies
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: downloadProvider.downloadedMovies.length > 4 ? 4 : downloadProvider.downloadedMovies.length,
+                  itemBuilder: (context, index) {
+                    final downloadedMovie = downloadProvider.downloadedMovies[index];
+                    return GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: downloadedMovie.movie))),
+                      child: Container(
+                        width: 100,
+                        margin: const EdgeInsets.only(right: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    ApiConstants.getImageUrl(downloadedMovie.movie.posterUrl.isNotEmpty 
+                                        ? downloadedMovie.movie.posterUrl 
+                                        : downloadedMovie.movie.thumbUrl),
+                                    width: 100,
+                                    height: 70,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 100,
+                                      height: 70,
+                                      color: AppTheme.darkAnthracite,
+                                      child: const Icon(Icons.movie, color: Colors.grey),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.8),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${downloadedMovie.episodeCount} tập',
+                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              downloadedMovie.movie.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              downloadedMovie.formattedTotalSize,
+                              style: const TextStyle(color: Colors.grey, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -164,6 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           const SizedBox(height: 20),
           _buildMenuGroup([
             _buildMenuItem(Icons.history_rounded, "Lịch sử xem phim", () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()))),
+            _buildMenuItem(Icons.download_rounded, "Phim đã tải", () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadsScreen()))),
             _buildMenuItem(Icons.notifications_none_rounded, "Thông báo", () {}),
           ]),
           const SizedBox(height: 32),

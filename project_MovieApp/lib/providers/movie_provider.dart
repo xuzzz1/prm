@@ -84,6 +84,24 @@ class MovieProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Force reload movie detail to get fresh m3u8 URLs (tokens expire quickly)
+  Future<void> forceReloadMovie(String slug) async {
+    _isLoadingDetail = true;
+    _movieDetail = null;
+    _episodes = [];
+    notifyListeners();
+
+    final result = await _movieService.fetchMovieDetail(slug);
+    if (result != null) {
+      _movieDetail = Movie.fromJson(result['movie'] as Map<String, dynamic>);
+      var epList = result['episodes'] as List? ?? [];
+      _episodes = epList.map((e) => EpisodeServer.fromJson(e)).toList();
+    }
+
+    _isLoadingDetail = false;
+    notifyListeners();
+  }
+
   // --- LOGIC XỬ LÝ PHIM BỊ ẨN (HIDDEN MOVIES) ---
 
   void loadHiddenSlugs() {

@@ -4,10 +4,12 @@ import 'package:chewie/chewie.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:intl/intl.dart';
 import '../../models/movie.dart';
+import '../../models/download.dart';
 import '../../providers/movie_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/review_provider.dart';
+import '../../providers/download_provider.dart';
 import '../../models/review.dart';
 import '../../constants/api_constants.dart';
 import '../../services/recommendation_service.dart';
@@ -114,7 +116,32 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       startAt = Duration(seconds: history.position!);
     }
     context.read<MovieProvider>().addToHistory(movieForPlayer, epName: episode.name);
-    context.read<PlayerProvider>().setVideo(movieForPlayer, episode.linkM3u8, episode.name, epIdx: epIdx, svIdx: svIdx, startAt: startAt);
+    
+    // Check if episode is downloaded
+    final downloadProvider = context.read<DownloadProvider>();
+    final downloadedEpisode = downloadProvider.getDownloadedEpisode(movieForPlayer.slug, episode.name);
+    
+    if (downloadedEpisode != null) {
+      // Play from local file
+      context.read<PlayerProvider>().setLocalVideo(
+        movieForPlayer,
+        downloadedEpisode.localPath,
+        episode.name,
+        epIdx: epIdx,
+        svIdx: svIdx,
+        startAt: startAt,
+      );
+    } else {
+      // Play from network
+      context.read<PlayerProvider>().setVideo(
+        movieForPlayer,
+        episode.linkM3u8,
+        episode.name,
+        epIdx: epIdx,
+        svIdx: svIdx,
+        startAt: startAt,
+      );
+    }
   }
 
   void _showPlayError(String message) {
@@ -255,6 +282,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       if (history != null && history.episodeName != null) currentEpName = history.episodeName!;
     }
     final primaryGenre = movie.categoryNames.values.isNotEmpty ? movie.categoryNames.values.first : "Phim";
+    final isSeries = movie.type == 'series' || (movie.episodeTotal != null && movie.episodeTotal != '1' && movie.episodeTotal != 'Full');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,7 +311,429 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             Text("${movie.year}  •  $primaryGenre  •  ${movie.durationLabel ?? '45 phút'}", style: const TextStyle(color: Colors.grey, fontSize: 14)),
           ],
         ),
+        const SizedBox(height: 16),
+        // Download section
+        _buildDownloadSection(movie, episodes, isSeries),
       ],
+    );
+  }
+
+  Widget _buildDownloadSection(Movie movie, List<EpisodeServer> episodes, bool isSeries) {
+    return Consumer<DownloadProvider>(
+      builder: (context, downloadProvider, _) {
+        final downloadedCount = downloadProvider.getDownloadedEpisodeCount(movie.slug);
+        final totalEpisodes = episodes.isNotEmpty ? episodes.first.serverData.length : (int.tryParse(movie.episodeTotal ?? '1') ?? 1);
+        final allDownloaded = downloadedCount >= totalEpisodes && totalEpisodes > 0;
+        final movieActiveDownloads = downloadProvider.activeDownloads.where((d) => d.movie.slug == movie.slug).toList();
+        final moviePendingDownloads = downloadProvider.pendingDownloads.where((d) => d.movie.slug == movie.slug).toList();
+        final hasActiveDownloads = movieActiveDownloads.isNotEmpty;
+
+        // Compute aggregate progress across active downloads for this movie
+        double aggregateProgress = 0.0;
+        int activeCount = movieActiveDownloads.length;
+        if (activeCount > 0) {
+          for (var d in movieActiveDownloads) aggregateProgress += d.progress;
+          aggregateProgress = aggregateProgress / activeCount;
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.secondaryAnthracite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    allDownloaded ? Icons.download_done_rounded : Icons.download_rounded,
+                    color: allDownloaded ? Colors.green : AppTheme.primaryAmber,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          allDownloaded ? 'Đã tải toàn bộ' :
+                          downloadedCount > 0 ? 'Đã tải $downloadedCount/$totalEpisodes tập' :
+                          'Tải phim để xem offline',
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (hasActiveDownloads)
+                          Text(
+                            'Đang tải $activeCount tập...',
+                            style: const TextStyle(color: AppTheme.primaryAmber, fontSize: 11),
+                          ),
+                        if (moviePendingDownloads.isNotEmpty && !hasActiveDownloads)
+                          Text(
+                            'Đang chờ ${moviePendingDownloads.length} tập...',
+                            style: const TextStyle(color: Colors.grey, fontSize: 11),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (!allDownloaded)
+                    GestureDetector(
+                      onTap: () => _showDownloadAllDialog(context, movie, episodes, isSeries),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryAmber,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text('Tải', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                  if (allDownloaded)
+                    GestureDetector(
+                      onTap: () => _showDeleteAllDialog(context, movie),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text('Xóa', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                ],
+              ),
+              // Aggregate progress bar for active downloads
+              if (hasActiveDownloads) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: aggregateProgress,
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                    color: AppTheme.primaryAmber,
+                    minHeight: 4,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${(aggregateProgress * 100).toInt()}%',
+                  style: const TextStyle(color: AppTheme.primaryAmber, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDownloadAllDialog(BuildContext context, Movie movie, List<EpisodeServer> episodes, bool isSeries) {
+    final downloadProvider = context.read<DownloadProvider>();
+    final server = episodes.isNotEmpty ? episodes.first : null;
+    final episodeList = server?.serverData ?? [];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.secondaryAnthracite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade600,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Chọn tập để tải', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(
+                episodeList.isEmpty ? 'Không có tập nào' : '${episodeList.length} tập',
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              if (episodeList.isEmpty)
+                const Expanded(
+                  child: Center(
+                    child: Text('Không có link video', style: TextStyle(color: Colors.grey)),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: episodeList.length,
+                    itemBuilder: (context, index) {
+                      final ep = episodeList[index];
+                      final isDownloaded = downloadProvider.isEpisodeDownloaded(movie.slug, ep.name);
+                      final isDownloading = downloadProvider.isDownloading(movie.slug, ep.name);
+                      final isPending = downloadProvider.getDownload(movie.slug, ep.name)?.status == DownloadStatus.pending;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          title: Text(
+                            ep.name,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                          trailing: isDownloaded
+                              ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
+                              : isDownloading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryAmber),
+                                    )
+                                  : isPending
+                                      ? const Icon(Icons.schedule, color: Colors.grey, size: 22)
+                                      : GestureDetector(
+                                          onTap: () {
+                                            Navigator.pop(context); // close episode list
+                                            _showSingleEpisodeQualityDialog(context, movie, ep, episodes);
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.primaryAmber,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text('Tải', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          ),
+                                        ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSingleEpisodeQualityDialog(BuildContext context, Movie movie, EpisodeDoc episode, List<EpisodeServer> episodes) {
+    DownloadQuality selectedQuality = DownloadQuality.medium;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.secondaryAnthracite,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Chọn chất lượng', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(episode.name, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              const SizedBox(height: 20),
+              ...DownloadQuality.values.map((quality) => _buildQualityOption(
+                quality,
+                selectedQuality == quality,
+                () => setState(() => selectedQuality = quality),
+              )),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _startDownloadSingle(movie, episode, selectedQuality);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryAmber,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('BẮT ĐẦU TẢI', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startDownloadSingle(Movie movie, EpisodeDoc episode, DownloadQuality quality) async {
+    final downloadProvider = context.read<DownloadProvider>();
+
+    if (downloadProvider.isEpisodeDownloaded(movie.slug, episode.name)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tập này đã được tải'),
+          backgroundColor: Colors.grey,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (downloadProvider.isDownloading(movie.slug, episode.name)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tập này đang được tải'),
+          backgroundColor: Colors.grey,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Show loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang lấy link mới...'),
+        backgroundColor: AppTheme.primaryAmber,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 10),
+      ),
+    );
+
+    // Force re-fetch movie detail to get fresh m3u8 URL (tokens expire quickly)
+    await _movieProvider!.forceReloadMovie(movie.slug);
+
+    // Find the fresh episode data
+    EpisodeDoc? freshEpisode;
+    for (var server in _movieProvider!.episodes) {
+      for (var ep in server.serverData) {
+        if (ep.slug == episode.slug) {
+          freshEpisode = ep;
+          break;
+        }
+      }
+      if (freshEpisode != null) break;
+    }
+
+    if (freshEpisode == null || freshEpisode.linkM3u8.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không lấy được link video, vui lòng thử lại'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Dismiss loading snackbar
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    downloadProvider.startDownload(
+      movie: movie,
+      episodeName: freshEpisode.name,
+      episodeSlug: freshEpisode.slug,
+      sourceUrl: freshEpisode.linkM3u8,
+      headers: {
+        'Referer': Uri.parse(freshEpisode.linkM3u8).origin,
+        'Origin': Uri.parse(freshEpisode.linkM3u8).origin,
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      },
+      quality: quality,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã bắt đầu tải: ${freshEpisode.name}'),
+        backgroundColor: AppTheme.primaryAmber,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildQualityOption(DownloadQuality quality, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryAmber.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryAmber : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected ? AppTheme.primaryAmber : Colors.grey,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(quality.label, style: TextStyle(color: isSelected ? AppTheme.primaryAmber : Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text(_getQualityDescription(quality), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getQualityDescription(DownloadQuality quality) {
+    switch (quality) {
+      case DownloadQuality.low:
+        return '480p - Dung lượng thấp nhất';
+      case DownloadQuality.medium:
+        return '720p - Cân bằng chất lượng';
+      case DownloadQuality.high:
+        return '720p - Chất lượng cao nhất';
+    }
+  }
+
+  void _showDeleteAllDialog(BuildContext context, Movie movie) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.secondaryAnthracite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Xóa tất cả tải về?', style: TextStyle(color: Colors.white)),
+        content: const Text('Tất cả các tập đã tải sẽ bị xóa khỏi thiết bị.', style: TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('HỦY', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<DownloadProvider>().deleteDownloadedMovie(movie.slug);
+              Navigator.pop(context);
+            },
+            child: const Text('XÓA', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -322,26 +772,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       itemCount: provider.episodes.length,
       itemBuilder: (context, sIdx) {
         final server = provider.episodes[sIdx];
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 2.2),
-          itemCount: server.serverData.length,
-          itemBuilder: (context, eIdx) {
-            final isPlaying = player.currentMovie?.slug == widget.movie.slug && player.currentEpisodeIndex == eIdx && player.currentServerIndex == sIdx;
-            return GestureDetector(
-              onTap: () => _playEpisode(provider.episodes, sIdx, eIdx),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isPlaying ? AppTheme.primaryAmber : AppTheme.secondaryAnthracite,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: isPlaying ? AppTheme.primaryAmber : Colors.white.withValues(alpha: 0.05)),
-                ),
-                alignment: Alignment.center,
-                child: Text(server.serverData[eIdx].name, style: TextStyle(color: isPlaying ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (server.serverName.isNotEmpty && server.serverName != 'Default')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(server.serverName, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
-            );
-          },
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 2.2),
+              itemCount: server.serverData.length,
+              itemBuilder: (context, eIdx) {
+                final episode = server.serverData[eIdx];
+                final isPlaying = player.currentMovie?.slug == widget.movie.slug && player.currentEpisodeIndex == eIdx && player.currentServerIndex == sIdx;
+                final downloadProvider = context.watch<DownloadProvider>();
+                final isDownloaded = downloadProvider.isEpisodeDownloaded(widget.movie.slug, episode.name);
+                final activeDownload = downloadProvider.getDownload(widget.movie.slug, episode.name);
+
+                return _EpisodeChip(
+                  episode: episode,
+                  isPlaying: isPlaying,
+                  isDownloaded: isDownloaded,
+                  activeDownload: activeDownload,
+                  onTap: () => _playEpisode(provider.episodes, sIdx, eIdx),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
         );
       },
     );
@@ -616,6 +1077,92 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EpisodeChip extends StatelessWidget {
+  final EpisodeDoc episode;
+  final bool isPlaying;
+  final bool isDownloaded;
+  final Download? activeDownload;
+  final VoidCallback onTap;
+
+  const _EpisodeChip({
+    required this.episode,
+    required this.isPlaying,
+    required this.isDownloaded,
+    required this.activeDownload,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDownloading = activeDownload != null && activeDownload!.status == DownloadStatus.downloading;
+    final bool isPending = activeDownload != null && activeDownload!.status == DownloadStatus.pending;
+    final double progress = activeDownload?.progress ?? 0.0;
+
+    return Stack(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: isPlaying ? AppTheme.primaryAmber : AppTheme.secondaryAnthracite,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isPlaying ? AppTheme.primaryAmber : Colors.white.withValues(alpha: 0.05)),
+            ),
+            alignment: Alignment.center,
+            child: Text(episode.name, style: TextStyle(color: isPlaying ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+        ),
+        // Download indicator overlay
+        if (isDownloaded)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+            ),
+          ),
+        if (isDownloading)
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: SizedBox(
+              width: 14,
+              height: 14,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    value: progress > 0 ? progress : null,
+                    color: AppTheme.primaryAmber,
+                    backgroundColor: Colors.white24,
+                  ),
+                  if (progress > 0)
+                    Text(
+                      '${(progress * 100).toInt()}',
+                      style: const TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.bold),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (isPending)
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+              decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(4)),
+              child: const Text('Chờ', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+            ),
+          ),
+      ],
     );
   }
 }

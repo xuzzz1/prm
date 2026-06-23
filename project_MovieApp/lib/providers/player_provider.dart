@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -22,6 +23,10 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // Local playback mode
+  bool _isLocalPlayback = false;
+  String? _localFilePath;
+
   Timer? _progressTimer;
   MovieProvider? _movieProvider;
   final RecommendationService _recommendationService = RecommendationService();
@@ -39,6 +44,8 @@ class PlayerProvider extends ChangeNotifier {
   bool get isExpanded => _isExpanded;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  bool get isLocalPlayback => _isLocalPlayback;
+  String? get localFilePath => _localFilePath;
 
   void setMovieProvider(MovieProvider provider) {
     _movieProvider = provider;
@@ -56,7 +63,9 @@ class PlayerProvider extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     _isMiniPlayerActive = true;
-    _isExpanded = true; 
+    _isExpanded = true;
+    _isLocalPlayback = false;
+    _localFilePath = null;
     _currentMovie = movie;
     _currentEpisodeName = episodeName;
     currentEpisodeIndex = epIdx;
@@ -102,6 +111,76 @@ class PlayerProvider extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       _errorMessage = "Không thể phát video. Vui lòng kiểm tra kết nối.\n$e";
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> setLocalVideo(Movie movie, String localPath, String episodeName, {int epIdx = 0, int svIdx = 0, Duration? startAt}) async {
+    // Check if file exists
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      _errorMessage = "File không tồn tại. Vui lòng tải lại.";
+      notifyListeners();
+      return;
+    }
+
+    if (_currentMovie?.slug == movie.slug && _currentEpisodeName == episodeName && _isLocalPlayback && _localFilePath == localPath) {
+      _isExpanded = true;
+      notifyListeners();
+      return;
+    }
+
+    _stopProgressTimer();
+
+    _isLoading = true;
+    _errorMessage = null;
+    _isMiniPlayerActive = true;
+    _isExpanded = true;
+    _isLocalPlayback = true;
+    _localFilePath = localPath;
+    _currentMovie = movie;
+    _currentEpisodeName = episodeName;
+    currentEpisodeIndex = epIdx;
+    currentServerIndex = svIdx;
+    notifyListeners();
+
+    try {
+      await _videoController?.dispose();
+      _chewieController?.dispose();
+
+      // Local file playback
+      _videoController = VideoPlayerController.file(file);
+      await _videoController!.initialize();
+
+      // Tự động tua đến vị trí cũ nếu có
+      if (startAt != null && startAt < _videoController!.value.duration) {
+        await _videoController!.seekTo(startAt);
+      }
+
+      _chewieController = ChewieController(
+        videoPlayerController: _videoController!,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: _videoController!.value.aspectRatio,
+        showControls: true,
+        placeholder: Container(color: Colors.black),
+        deviceOrientationsOnEnterFullScreen: [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
+        deviceOrientationsAfterFullScreen: [
+          DeviceOrientation.portraitUp,
+        ],
+      );
+      
+      _videoWidget = Chewie(controller: _chewieController!);
+      _isLoading = false;
+      
+      _startProgressTimer();
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = "Không thể phát video. File có thể bị hỏng.\n$e";
     }
 
     notifyListeners();
@@ -170,6 +249,8 @@ class PlayerProvider extends ChangeNotifier {
     _currentMovie = null;
     _isMiniPlayerActive = false;
     _isExpanded = false;
+    _isLocalPlayback = false;
+    _localFilePath = null;
 
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
