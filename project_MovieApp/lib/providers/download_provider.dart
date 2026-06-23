@@ -60,7 +60,7 @@ class DownloadProvider extends ChangeNotifier {
         final download = Download.fromJson(jsonDecode(json));
         _downloads[download.id] = download;
       } catch (e) {
-        print('Error loading download: $e');
+        // silent
       }
     }
 
@@ -70,7 +70,7 @@ class DownloadProvider extends ChangeNotifier {
         final movie = DownloadedMovie.fromJson(jsonDecode(json));
         _downloadedMovies[movie.movie.slug] = movie;
       } catch (e) {
-        print('Error loading downloaded movie: $e');
+        // silent
       }
     }
 
@@ -195,8 +195,6 @@ class DownloadProvider extends ChangeNotifier {
     try {
       final outputName = '${download.movie.slug}_${download.episodeName}'.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w_]'), '');
 
-      print('[DownloadProvider] Starting download: ${download.episodeName} | quality: ${download.quality}');
-
       final localPath = await _downloadService.downloadWithProgress(
         url: download.sourceUrl,
         headers: download.headers,
@@ -204,8 +202,6 @@ class DownloadProvider extends ChangeNotifier {
         quality: download.quality,
         onProgress: (progress, stage, downloadedBytes, totalBytes) {
           if (_activeDownloads[id] != true) return;
-          final pct = progress != null ? (progress * 100).toInt() : null;
-          print('[DownloadProvider] Progress ${download.episodeName}: ${pct != null ? '$pct%' : 'indeterminate'} | stage: $stage');
           _downloads[id] = _downloads[id]!.copyWith(
             progress: progress,
             stage: stage,
@@ -215,7 +211,6 @@ class DownloadProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-      print('[DownloadProvider] downloadWithProgress returned: $localPath');
 
       if (_activeDownloads[id] != true) {
         // Download was cancelled

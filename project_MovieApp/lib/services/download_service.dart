@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new_https/log.dart';
 import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:path_provider/path_provider.dart';
@@ -184,14 +183,6 @@ class DownloadService {
         }
       }
 
-      // Capture logs via global config callback (fires for ALL sessions)
-      void captureLog(Log log) {
-        final message = log.getMessage();
-        if (message.trim().isNotEmpty) {
-          // consume log silently
-        }
-      }
-      FFmpegKitConfig.enableLogCallback(captureLog);
       FFmpegKitConfig.enableStatisticsCallback(handleStatistics);
 
       final session = await FFmpegKit.execute(command);
@@ -251,7 +242,6 @@ class DownloadService {
 
       return null;
     } catch (e) {
-      print('Simple download error: $e');
       return null;
     }
   }
@@ -265,7 +255,6 @@ class DownloadService {
       }
       return false;
     } catch (e) {
-      print('Delete error: $e');
       return false;
     }
   }
@@ -278,7 +267,7 @@ class DownloadService {
         return stat.size;
       }
     } catch (e) {
-      print('Get size error: $e');
+      // silent
     }
     return 0;
   }
@@ -296,7 +285,7 @@ class DownloadService {
             .toList();
       }
     } catch (e) {
-      print('Get all downloads error: $e');
+      // silent
     }
     return [];
   }
@@ -321,7 +310,6 @@ class DownloadService {
       }
       return false;
     } catch (e) {
-      print('Clear downloads error: $e');
       return false;
     }
   }
