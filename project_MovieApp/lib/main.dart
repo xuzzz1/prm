@@ -9,6 +9,7 @@ import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
 import 'providers/admin_provider.dart';
 import 'providers/download_provider.dart';
+import 'providers/connectivity_provider.dart';
 import 'screens/auth/splash_screen.dart';
 import 'themes/app_theme.dart';
 
@@ -28,7 +29,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => ReviewProvider()),
         ChangeNotifierProvider(create: (_) => AdminProvider()), // Thêm provider
-        ChangeNotifierProvider(create: (_) => DownloadProvider()), // Thêm provider
+        ChangeNotifierProvider(create: (_) => DownloadProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
       ],
       child: const MyApp(),
     ),

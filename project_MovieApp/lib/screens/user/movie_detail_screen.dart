@@ -15,6 +15,7 @@ import '../../constants/api_constants.dart';
 import '../../services/recommendation_service.dart';
 import '../../widgets/movie_card.dart';
 import '../../themes/app_theme.dart';
+import 'downloads_screen.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final Movie movie;
@@ -162,7 +163,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           builder: (context, provider, child) {
             if (provider.isLoadingDetail) return const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber));
             final movie = provider.movieDetail;
-            if (movie == null) return const Center(child: Text("Lỗi tải thông tin", style: TextStyle(color: Colors.white)));
+            if (movie == null) return _OfflineDetailView(movie: widget.movie);
 
             // Fire once when detail first loads — _trackedClickSlugs prevents double-call
             _onMovieDetailLoaded(movie);
@@ -1074,6 +1075,47 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               child: const Text("GỬI ĐÁNH GIÁ"),
             ),
             const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OfflineDetailView extends StatelessWidget {
+  final Movie movie;
+
+  const _OfflineDetailView({required this.movie});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 72, color: Colors.grey),
+            const SizedBox(height: 20),
+            const Text(
+              'Bạn đang offline',
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DownloadsScreen()),
+              ),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('Xem phim đã tải'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryAmber,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
           ],
         ),
       ),

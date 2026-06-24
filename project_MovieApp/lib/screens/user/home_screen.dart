@@ -8,13 +8,16 @@ import '../../services/recommendation_service.dart';
 import '../../models/movie.dart';
 import '../../models/scored_movie.dart';
 import '../../providers/movie_provider.dart';
+import '../../providers/connectivity_provider.dart';
 import '../../widgets/movie_card.dart';
+import '../../widgets/offline_banner.dart';
 import '../../constants/api_constants.dart';
 import '../../themes/app_theme.dart';
-import 'category_screen.dart'; 
+import 'category_screen.dart';
 import 'favorite_screen.dart';
 import 'profile_screen.dart';
 import 'search_screen.dart';
+import 'downloads_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -45,14 +48,16 @@ class _HomeScreenState extends State<HomeScreen> {
         )
             : null,
 
-        body: IndexedStack(
-          index: _currentIndex,
-          children: const [
-            _HomeTabBody(),         
-            CategoryScreen(),
-            FavoriteScreen(),
-            ProfileScreen(),
-          ],
+        body: OfflineBanner(
+          child: IndexedStack(
+            index: _currentIndex,
+            children: const [
+              _HomeTabBody(),
+              CategoryScreen(),
+              FavoriteScreen(),
+              ProfileScreen(),
+            ],
+          ),
         ),
 
         bottomNavigationBar: BottomNavigationBar(
@@ -116,6 +121,8 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   }
 
   Future<void> _initializeData() async {
+    final connectivity = context.read<ConnectivityProvider>();
+    if (connectivity.isOffline) return;
     await fetchMovies();
     await Future.wait([
       _loadBannerMovies(),
@@ -271,21 +278,30 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); 
-    return isLoading
-        ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber))
-        : RefreshIndicator(
-            onRefresh: _handleRefresh,
-            color: AppTheme.primaryAmber,
-            backgroundColor: AppTheme.secondaryAnthracite,
-            child: Consumer<MovieProvider>(
-              builder: (context, movieProvider, child) {
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  key: const PageStorageKey('home_scroll'), 
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+    super.build(context);
+
+    // Check connectivity synchronously — before any network calls start
+    final connectivity = context.watch<ConnectivityProvider>();
+    if (connectivity.isOffline) {
+      return const _OfflineStateView();
+    }
+
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber));
+    }
+
+    return RefreshIndicator(
+        onRefresh: _handleRefresh,
+        color: AppTheme.primaryAmber,
+        backgroundColor: AppTheme.secondaryAnthracite,
+        child: Consumer<MovieProvider>(
+          builder: (context, movieProvider, child) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              key: const PageStorageKey('home_scroll'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   const SizedBox(height: 12),
                   CarouselSlider(
                     options: CarouselOptions(
@@ -340,7 +356,7 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
             );
           },
         ),
-    );
+      );
   }
 
   Widget _buildContinueWatchingList(List<Movie> history) {
@@ -473,6 +489,56 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
             child: MovieCard(movie: scored.movie, matchReason: scored.matchReason),
           );
         },
+      ),
+    );
+  }
+}
+
+class _OfflineStateView extends StatelessWidget {
+  const _OfflineStateView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.wifi_off_rounded,
+              size: 72,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Bạn đang offline',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DownloadsScreen()),
+              ),
+              child: const Text(
+                'Nhấn vào đây để đến danh sách phim đã tải',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.primaryAmber,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppTheme.primaryAmber,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
