@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_database/firebase_database.dart';
 import '../../services/movie_service.dart';
 import '../../services/recommendation_service.dart';
 import '../../models/movie.dart';
@@ -80,9 +79,9 @@ class _HomeTabBody extends StatefulWidget {
 class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final MovieService movieService = MovieService();
   final RecommendationService recommendationService = RecommendationService();
-  List<Movie> movies = [];
   List<Movie> trendingMovies = [];
   List<Movie> bannerMovies = [];
+  List<Movie> recentlyUpdatedMovies = [];
   List<ScoredMovie> recommendedMovies = [];
   bool isLoading = true;
   bool isRecommendedLoading = true;
@@ -90,6 +89,10 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   MovieBasedSection? _movieBasedSection;
   List<ScoredMovie> _movieBasedMovies = [];
   int _refreshCounter = 0;
+
+  /// Shared pool populated by Phase 2 enrichment. Used by recommendations and
+  /// movie-based sections for scoring without re-fetching.
+  List<Movie> _homePool = [];
 
   @override
   bool get wantKeepAlive => true;
@@ -115,78 +118,75 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     }
   }
 
+  /// Phase 1: fetch 10 list pages and set the sorted sections immediately.
+  /// This makes banner/trending/recent appear without waiting for detail fetches.
   Future<void> _initializeData() async {
-    await fetchMovies();
-    await Future.wait([
-      _loadBannerMovies(),
-      _loadRecommendations(),
-      _loadMovieBasedSection(),
-    ]);
-  }
-
-  Future<void> _loadBannerMovies() async {
-    try {
-      final snapshot = await FirebaseDatabase.instance.ref('settings/banners').get();
-      if (snapshot.exists) {
-        final List<dynamic> slugs = snapshot.value as List<dynamic>;
-        final List<Movie> loadedBanners = [];
-        for (var slug in slugs) {
-          final result = await movieService.fetchMovieDetail(slug.toString());
-          if (result != null && result['movie'] != null) {
-            loadedBanners.add(Movie.fromJson(result['movie']));
-          }
-        }
-        if (mounted) setState(() => bannerMovies = loadedBanners);
-      }
-    } catch (e) {
-      debugPrint("Lỗi load banner: $e");
-    }
-  }
-
-  Future<void> fetchMovies() async {
-    final hiddenSnapshot = await FirebaseDatabase.instance.ref('settings/hidden_movies').get();
-    final Set<String> hiddenSlugs = {};
-    if (hiddenSnapshot.exists) {
-      final Map<dynamic, dynamic> data = hiddenSnapshot.value as Map<dynamic, dynamic>;
-      hiddenSlugs.addAll(data.keys.cast<String>());
-    }
-
-    final results = await Future.wait([
-      movieService.fetchMoviesByType('phim-bo', 1),
-      movieService.fetchMoviesByType('phim-le', 1),
-      movieService.fetchMoviesByType('phim-bo', 2),
-      movieService.fetchMoviesByType('phim-le', 2),
-    ]);
-
-    List<Movie> allNew = [];
-    for (var res in results) {
-      if (res['movies'] != null) allNew.addAll(res['movies'] as List<Movie>);
-    }
-
-    final currentYear = DateTime.now().year;
-    final trulyNewMovies = allNew.where((m) => 
-      m.year >= currentYear - 1 && !hiddenSlugs.contains(m.slug)
-    ).toList();
-    trulyNewMovies.sort((a, b) => b.year.compareTo(a.year));
-
-    final trendingRes = await movieService.fetchMoviesByType('hoat-hinh', 1);
-    final List<Movie> trendingList = (trendingRes['movies'] as List<Movie>?)
-            ?.where((m) => !hiddenSlugs.contains(m.slug))
-            .toList() ?? [];
-
+    final quickResult = await movieService.fetchMoviesForHomeQuick(pages: 10);
     if (!mounted) return;
+
     setState(() {
-      movies = trulyNewMovies.isNotEmpty ? trulyNewMovies : allNew.where((m) => !hiddenSlugs.contains(m.slug)).take(15).toList();
-      trendingMovies = trendingList;
+      bannerMovies = quickResult.bannerMovies;
+      trendingMovies = quickResult.trendingMovies;
+      recentlyUpdatedMovies = quickResult.recentlyUpdatedMovies;
       isLoading = false;
     });
+
+    // Phase 2 — background: enrich the full pool with detail data,
+    // then update recommendations and movie-based section
+    _loadEnrichedPool(quickResult.allMovies);
+  }
+
+  /// Phase 2: detail-enrich the already-fetched [pool], then update recommendations
+  /// and movie-based sections in the background.
+  Future<void> _loadEnrichedPool(List<Movie> pool) async {
+    _homePool = pool;
+    _loadRecommendations();
+    _loadMovieBasedSection();
+
+    final allMovies = await movieService.fetchMoviesForHomeEnriched(
+      pool: pool,
+    );
+
+    if (!mounted) return;
+
+    // Update the shared pool so recommendations/movie-based sections score
+    // against enriched data (with real tmdb ratings). Banner/trending/recent
+    // are NOT overwritten — they stay from Phase 1 (fast, already correct).
+    setState(() {
+      _homePool = allMovies;
+    });
+
+    print('=== PHASE 2: ENRICHED POOL (${allMovies.length}) ===');
+    print('--- by rating (top 10) ---');
+    final byRating = List<Movie>.from(allMovies)
+      ..sort((a, b) => (b.tmdbVoteAverage ?? 0.0).compareTo(a.tmdbVoteAverage ?? 0.0));
+    for (final m in byRating.take(10)) {
+      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | tmdbVoteCount: ${m.tmdbVoteCount}');
+    }
+    print('--- by votes (top 10) ---');
+    final byVotes = List<Movie>.from(allMovies)
+      ..sort((a, b) => (b.tmdbVoteCount ?? 0).compareTo(a.tmdbVoteCount ?? 0));
+    for (final m in byVotes.take(10)) {
+      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | tmdbVoteCount: ${m.tmdbVoteCount}');
+    }
+    print('--- by modified (top 10) ---');
+    final byModified = List<Movie>.from(allMovies)
+      ..sort((a, b) {
+        final aTime = a.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
+      });
+    for (final m in byModified.take(10)) {
+      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | modifiedTime: ${m.modifiedTime}');
+    }
+    print('=== END PHASE 2 ===');
   }
 
   Future<void> _loadMovieBasedSection() async {
-    final pool = await movieService.fetchAllMovies(pages: 3);
-    final movieBased = await recommendationService.getTopWatchedMovie(pool);
+    if (_homePool.isEmpty) return;
+    final movieBased = await recommendationService.getTopWatchedMovie(_homePool);
     if (movieBased != null) {
-      final similar = await recommendationService.scoreMoviesForSeed(pool, 12);
+      final similar = await recommendationService.scoreMoviesForSeed(_homePool, 12);
       if (!mounted) return;
       setState(() {
         _movieBasedSection = movieBased;
@@ -198,60 +198,26 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   Future<void> _refreshRecommendations() async {
     recommendationService.invalidateCache();
     final prefs = await recommendationService.currentPrefs;
-    // Skip if nothing has changed since last load
     if (prefs == null || prefs.categoryAffinity.isEmpty) return;
     setState(() => _refreshCounter++);
     await Future.wait([
-      _loadRecommendations(),
-      _loadMovieBasedSection(),
+      Future(() async {
+        await _loadRecommendations();
+      }),
+      Future(() async {
+        await _loadMovieBasedSection();
+      }),
     ]);
   }
 
   Future<void> _loadRecommendations() async {
-    final prefs = await recommendationService.currentPrefs;
-    Map<String, Movie> poolMap = {};
-
-    if (prefs != null && prefs.categoryAffinity.isNotEmpty) {
-      var sortedCats = prefs.categoryAffinity.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      final topSlugs = sortedCats.take(4).map((e) => e.key).toList();
-      
-      if (prefs.recentWatchedSlugs.isNotEmpty) {
-        final lastSlug = prefs.recentWatchedSlugs.first;
-        final lastMovieData = prefs.watchedMoviesCache[lastSlug];
-        if (lastMovieData != null) {
-          final lastMovie = Movie.fromJson(lastMovieData);
-          for (var cat in lastMovie.categories) {
-            if (!topSlugs.contains(cat)) topSlugs.add(cat);
-          }
-        }
-      }
-      
-      final catResults = await Future.wait(topSlugs.take(6).map((slug) => movieService.fetchMoviesByCategory(slug, 1)));
-      for (var res in catResults) {
-        if (res['movies'] != null) {
-          for (var m in (res['movies'] as List<Movie>)) {
-            poolMap[m.slug] = m;
-          }
-        }
-      }
-    }
-
-    if (poolMap.length < 15) {
-      final results = await Future.wait([movieService.fetchMoviesByType('phim-bo', 1), movieService.fetchMoviesByType('phim-le', 1)]);
-      for (var res in results) {
-        if (res['movies'] != null) {
-          for (var m in (res['movies'] as List<Movie>)) {
-            poolMap[m.slug] = m;
-          }
-        }
-      }
-    }
-
-    final pool = poolMap.values.toList();
-    final result = await recommendationService.scoreMovies(pool);
-    final newMoviesSlugs = movies.map((m) => m.slug).toSet();
-    final filteredResult = result.where((sm) => !newMoviesSlugs.contains(sm.movie.slug)).take(15).toList();
+    if (_homePool.isEmpty) return;
+    final result = await recommendationService.scoreMovies(_homePool);
+    final bannerSlugs = bannerMovies.map((m) => m.slug).toSet();
+    final filteredResult = result
+        .where((sm) => !bannerSlugs.contains(sm.movie.slug))
+        .take(15)
+        .toList();
 
     if (!mounted) return;
     setState(() {
@@ -298,7 +264,7 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
                       List<Movie> displayBanners = List.from(bannerMovies);
                       if (displayBanners.length < 5) {
                         final adminSlugs = displayBanners.map((m) => m.slug).toSet();
-                        final fillerMovies = movies.where((m) => !adminSlugs.contains(m.slug)).take(5 - displayBanners.length);
+                        final fillerMovies = _homePool.where((m) => !adminSlugs.contains(m.slug)).take(5 - displayBanners.length);
                         displayBanners.addAll(fillerMovies);
                       }
                       return displayBanners.take(5).map((movie) {
@@ -324,8 +290,8 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
                     _buildMovieBasedHorizontalList(_movieBasedMovies),
                   ],
                   const SizedBox(height: 24),
-                  _buildSectionTitle("New Movies"),
-                  _buildMovieHorizontalList(movies),
+                  _buildSectionTitle("Recently Updated"),
+                  _buildMovieHorizontalList(recentlyUpdatedMovies),
                   const SizedBox(height: 24),
                   _buildSectionTitle("Recommend"),
                   isRecommendedLoading

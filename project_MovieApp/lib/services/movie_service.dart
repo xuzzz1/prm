@@ -3,6 +3,22 @@ import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../models/movie.dart';
 
+/// Phase-1 result: contains only list-sorted data, no detail enrichment needed.
+/// Home screen can render immediately after receiving this.
+class HomeQuickResult {
+  final List<Movie> allMovies;
+  final List<Movie> bannerMovies;
+  final List<Movie> trendingMovies;
+  final List<Movie> recentlyUpdatedMovies;
+
+  HomeQuickResult({
+    required this.allMovies,
+    required this.bannerMovies,
+    required this.trendingMovies,
+    required this.recentlyUpdatedMovies,
+  });
+}
+
 class MovieService {
   Future<List<Movie>> fetchTrendingMovies() async {
     try {
@@ -39,6 +55,112 @@ class MovieService {
       }
     }
     return allMovies;
+  }
+
+  /// Phase 1 — fetches 10 list pages, sorts sections, and returns immediately.
+  /// No detail enrichment yet. Designed for the home screen's fast-first render.
+  Future<HomeQuickResult> fetchMoviesForHomeQuick({int pages = 10}) async {
+    final allMovies = await fetchAllMovies(pages: pages);
+
+    print('=== PHASE 1: ALL MOVIES (${allMovies.length}) ===');
+    for (final m in allMovies) {
+      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | tmdbVoteCount: ${m.tmdbVoteCount} | modifiedTime: ${m.modifiedTime}');
+    }
+    print('=== END PHASE 1 ===');
+
+    final byRating = List<Movie>.from(allMovies)
+      ..sort((a, b) => (b.tmdbVoteAverage ?? 0.0).compareTo(a.tmdbVoteAverage ?? 0.0));
+
+    final byVotes = List<Movie>.from(allMovies)
+      ..sort((a, b) => (b.tmdbVoteCount ?? 0).compareTo(a.tmdbVoteCount ?? 0));
+
+    final byModified = List<Movie>.from(allMovies)
+      ..sort((a, b) {
+        final aTime = a.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
+      });
+
+    return HomeQuickResult(
+      allMovies: allMovies,
+      bannerMovies: byRating.take(10).toList(),
+      trendingMovies: byVotes.take(10).toList(),
+      recentlyUpdatedMovies: byModified.take(10).toList(),
+    );
+  }
+
+  /// Phase 2 — enriches an already-fetched [pool] by batch-fetching details
+  /// (10 concurrent at a time) to get real tmdbVoteAverage / tmdbVoteCount.
+  /// Returns the enriched pool for use by recommendations/movie-based sections.
+  Future<List<Movie>> fetchMoviesForHomeEnriched({required List<Movie> pool}) async {
+    return await _fetchDetailsBatched(pool, batchSize: 10);
+  }
+
+  /// Fetches movie details in controlled-concurrency batches, returning
+  /// enriched Movie objects. Preserves order of the input list.
+  Future<List<Movie>> _fetchDetailsBatched(List<Movie> movies, {int batchSize = 10}) async {
+    final result = List<Movie>.filled(movies.length, movies[0]); // placeholder
+
+    for (int i = 0; i < movies.length; i += batchSize) {
+      final end = (i + batchSize < movies.length) ? i + batchSize : movies.length;
+      final batch = movies.sublist(i, end);
+
+      final details = await Future.wait(
+        batch.map((m) => fetchMovieDetail(m.slug)),
+      );
+
+      for (int j = 0; j < batch.length; j++) {
+        final detail = details[j];
+        if (detail != null) {
+          result[i + j] = _mergeDetailIntoMovie(batch[j], detail);
+        } else {
+          result[i + j] = batch[j]; // keep list-item data on failure
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /// Merges enriched fields from a detail API response into a Movie.
+  /// Only overrides fields that the detail response actually provides (non-null),
+  /// preserving list-item data (tmdbVoteAverage, tmdbVoteCount, modifiedTime) when
+  /// the detail endpoint doesn't return them.
+  Movie _mergeDetailIntoMovie(Movie base, Map<String, dynamic> detail) {
+    final item = detail['data']?['item'] ?? {};
+
+    final merged = Map<String, dynamic>.from(base.toJson());
+
+    // Only override if detail provides a non-null value
+    void mergeIfPresent(String key, dynamic value) {
+      if (value != null) merged[key] = value;
+    }
+
+    // Only merge tmdb if it has real data — avoid overwriting valid list values
+    // with an empty {} from the detail endpoint
+    final tmdbValue = item['tmdb'];
+    if (tmdbValue != null && (tmdbValue is Map) && tmdbValue.isNotEmpty) {
+      merged['tmdb'] = tmdbValue;
+    }
+
+    mergeIfPresent('content', item['content']);
+    mergeIfPresent('type', item['type']);
+    mergeIfPresent('time', item['time']);
+    mergeIfPresent('episode_total', item['episode_total']);
+    mergeIfPresent('view', item['view']);
+    mergeIfPresent('category', item['category']);
+    mergeIfPresent('country', item['country']);
+    mergeIfPresent('actor', item['actor']);
+    mergeIfPresent('director', item['director']);
+
+    // Only merge modified if it has a non-empty value — avoid overwriting valid
+    // modifiedTime from the list endpoint with an empty string from detail
+    final modifiedValue = item['modified'];
+    if (modifiedValue != null && modifiedValue.toString().trim().isNotEmpty) {
+      merged['modified'] = modifiedValue;
+    }
+
+    return Movie.fromJson(merged);
   }
 
   // HÀM MỚI: Gọi API lấy chi tiết phim & danh sách tập phim

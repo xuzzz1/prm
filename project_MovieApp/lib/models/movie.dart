@@ -18,6 +18,9 @@ class Movie {
   final String? episodeTotal;
   final String? durationLabel; // e.g. "45 phút" or "17 phút/tập"
   final int? viewCount;
+  final double? tmdbVoteAverage;
+  final int? tmdbVoteCount;
+  final DateTime? modifiedTime;
 
   // Playback fields
   int? position;
@@ -43,6 +46,9 @@ class Movie {
     this.episodeTotal,
     this.durationLabel,
     this.viewCount,
+    this.tmdbVoteAverage,
+    this.tmdbVoteCount,
+    this.modifiedTime,
     this.position,
     this.playbackDuration,
     this.episodeName,
@@ -81,6 +87,13 @@ class Movie {
       episodeTotal: json['episode_total']?.toString(),
       durationLabel: json['time']?.toString(),
       viewCount: json['view'] is int ? json['view'] : null,
+      tmdbVoteAverage: (json['tmdb']?['vote_average'] is num)
+          ? (json['tmdb']['vote_average'] as num).toDouble()
+          : null,
+      tmdbVoteCount: json['tmdb']?['vote_count'] is int
+          ? json['tmdb']['vote_count'] as int
+          : null,
+      modifiedTime: _parseModifiedTime(json['modified']),
       position: json['position'],
       playbackDuration: json['duration'],
       episodeName: json['episode_name'],
@@ -111,6 +124,18 @@ class Movie {
       );
     }
     return {};
+  }
+
+  static DateTime? _parseModifiedTime(dynamic field) {
+    if (field == null) return null;
+    String? raw;
+    if (field is String) {
+      raw = field;
+    } else if (field is Map && field['time'] is String) {
+      raw = field['time'] as String;
+    }
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
   }
 
   static Map<String, String> _flattenToNameMap(dynamic field) {
@@ -151,6 +176,10 @@ class Movie {
       'country_names': countryNames,
       'actors': actors,
       'directors': directors,
+      'view': viewCount,
+      'tmdb_vote_average': tmdbVoteAverage,
+      'tmdb_vote_count': tmdbVoteCount,
+      'modified_time': modifiedTime?.toIso8601String(),
     };
   }
 }
