@@ -1,0 +1,117 @@
+import 'package:dio/dio.dart';
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
+import 'package:dio_cache_interceptor_hive_store/dio_cache_interceptor_hive_store.dart';
+import 'package:path_provider/path_provider.dart';
+
+class DioClient {
+  static DioClient? _instance;
+  late Dio _dio;
+  late DioCacheInterceptor _cacheInterceptor;
+  late HiveCacheStore _cacheStore;
+
+  DioClient._();
+
+  static Future<DioClient> getInstance() async {
+    if (_instance == null) {
+      _instance = DioClient._();
+      await _instance!._init();
+    }
+    return _instance!;
+  }
+
+  Future<void> _init() async {
+    final directory = await getApplicationDocumentsDirectory();
+    _cacheStore = HiveCacheStore(
+      '${directory.path}/dio_cache',
+      hiveBoxName: 'dio_cache',
+    );
+
+    _cacheInterceptor = DioCacheInterceptor(
+      options: CacheOptions(
+        store: _cacheStore,
+        policy: CachePolicy.refreshForceCache,
+        maxStale: const Duration(days: 7),
+        priority: CachePriority.normal,
+      ),
+    );
+
+    _dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Accept': 'application/json',
+        },
+      ),
+    );
+
+    _dio.interceptors.add(_cacheInterceptor);
+  }
+
+  Dio get dio => _dio;
+
+  /// Quick list cache: stale-while-revalidate (always fetch, cache result)
+  CacheOptions quickListCacheOptions() {
+    return CacheOptions(
+      store: _cacheStore,
+      policy: CachePolicy.refreshForceCache,
+      maxStale: const Duration(hours: 1),
+      hitCacheOnErrorExcept: [401, 403],
+      priority: CachePriority.high,
+    );
+  }
+
+  /// Enriched list cache: cache-first with 6h TTL
+  CacheOptions enrichedListCacheOptions() {
+    return CacheOptions(
+      store: _cacheStore,
+      policy: CachePolicy.request,
+      maxStale: const Duration(hours: 12),
+      hitCacheOnErrorExcept: [401, 403],
+      priority: CachePriority.high,
+    );
+  }
+
+  /// Detail cache: cache-first with 6h TTL
+  CacheOptions detailCacheOptions() {
+    return CacheOptions(
+      store: _cacheStore,
+      policy: CachePolicy.request,
+      maxStale: const Duration(hours: 12),
+      hitCacheOnErrorExcept: [401, 403],
+      priority: CachePriority.normal,
+    );
+  }
+
+  /// Search cache: 5 min TTL, stale-while-revalidate
+  CacheOptions searchCacheOptions() {
+    return CacheOptions(
+      store: _cacheStore,
+      policy: CachePolicy.refreshForceCache,
+      maxStale: const Duration(minutes: 30),
+      hitCacheOnErrorExcept: [401, 403],
+      priority: CachePriority.low,
+    );
+  }
+
+  /// Category cache: 30 min TTL, stale-while-revalidate
+  CacheOptions categoryCacheOptions() {
+    return CacheOptions(
+      store: _cacheStore,
+      policy: CachePolicy.refreshForceCache,
+      maxStale: const Duration(hours: 1),
+      hitCacheOnErrorExcept: [401, 403],
+      priority: CachePriority.normal,
+    );
+  }
+
+  /// Clear all cache
+  Future<void> clearCache() async {
+    await _cacheStore.clean();
+  }
+
+  /// Delete cache by key
+  Future<void> deleteCacheKey(String key) async {
+    await _cacheStore.delete(key);
+  }
+}

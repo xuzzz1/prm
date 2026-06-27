@@ -1,7 +1,8 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import '../constants/api_constants.dart';
 import '../models/movie.dart';
+import 'dio_client.dart';
 
 /// Phase-1 result: contains only list-sorted data, no detail enrichment needed.
 /// Home screen can render immediately after receiving this.
@@ -20,15 +21,35 @@ class HomeQuickResult {
 }
 
 class MovieService {
+  late Dio _dio;
+  late DioClient _dioClient;
+  bool _initialized = false;
+
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    _dioClient = await DioClient.getInstance();
+    _dio = _dioClient.dio;
+    _initialized = true;
+  }
+
+  Future<Response<dynamic>> _cachedGet(
+    String url,
+    CacheOptions cacheOptions,
+  ) async {
+    await _ensureInitialized();
+    return _dio.get(
+      url,
+      options: cacheOptions.toOptions(),
+    );
+  }
+
   Future<List<Movie>> fetchTrendingMovies() async {
     try {
-      final url = Uri.parse(
-        '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1',
-      );
+      final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1';
+      final response = await _cachedGet(url, _dioClient.quickListCacheOptions());
 
-      final response = await http.get(url);
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = response.data;
         final List items = data['items'] ?? [];
         return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
       }
@@ -42,11 +63,10 @@ class MovieService {
     final allMovies = <Movie>[];
     for (int page = 1; page <= pages; page++) {
       try {
-        final url = Uri.parse(
-          '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=$page',
-        );
-        final response = await http.get(url);
-        final data = jsonDecode(response.body);
+        final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=$page';
+        final cacheOptions = _dioClient.quickListCacheOptions();
+        final response = await _cachedGet(url, cacheOptions);
+        final data = response.data;
         final List items = data['items'] ?? [];
         final movies = items.map((json) => Movie.fromJson(json)).toList();
         allMovies.addAll(movies);
@@ -99,7 +119,7 @@ class MovieService {
   /// Fetches movie details in controlled-concurrency batches, returning
   /// enriched Movie objects. Preserves order of the input list.
   Future<List<Movie>> _fetchDetailsBatched(List<Movie> movies, {int batchSize = 10}) async {
-    final result = List<Movie>.filled(movies.length, movies[0]); // placeholder
+    final result = List<Movie>.filled(movies.length, movies[0]);
 
     for (int i = 0; i < movies.length; i += batchSize) {
       final end = (i + batchSize < movies.length) ? i + batchSize : movies.length;
@@ -114,7 +134,7 @@ class MovieService {
         if (detail != null) {
           result[i + j] = _mergeDetailIntoMovie(batch[j], detail);
         } else {
-          result[i + j] = batch[j]; // keep list-item data on failure
+          result[i + j] = batch[j];
         }
       }
     }
@@ -123,21 +143,14 @@ class MovieService {
   }
 
   /// Merges enriched fields from a detail API response into a Movie.
-  /// Only overrides fields that the detail response actually provides (non-null),
-  /// preserving list-item data (tmdbVoteAverage, tmdbVoteCount, modifiedTime) when
-  /// the detail endpoint doesn't return them.
   Movie _mergeDetailIntoMovie(Movie base, Map<String, dynamic> detail) {
     final item = detail['data']?['item'] ?? {};
-
     final merged = Map<String, dynamic>.from(base.toJson());
 
-    // Only override if detail provides a non-null value
     void mergeIfPresent(String key, dynamic value) {
       if (value != null) merged[key] = value;
     }
 
-    // Only merge tmdb if it has real data — avoid overwriting valid list values
-    // with an empty {} from the detail endpoint
     final tmdbValue = item['tmdb'];
     if (tmdbValue != null && (tmdbValue is Map) && tmdbValue.isNotEmpty) {
       merged['tmdb'] = tmdbValue;
@@ -153,8 +166,6 @@ class MovieService {
     mergeIfPresent('actor', item['actor']);
     mergeIfPresent('director', item['director']);
 
-    // Only merge modified if it has a non-empty value — avoid overwriting valid
-    // modifiedTime from the list endpoint with an empty string from detail
     final modifiedValue = item['modified'];
     if (modifiedValue != null && modifiedValue.toString().trim().isNotEmpty) {
       merged['modified'] = modifiedValue;
@@ -163,16 +174,15 @@ class MovieService {
     return Movie.fromJson(merged);
   }
 
-  // HÀM MỚI: Gọi API lấy chi tiết phim & danh sách tập phim
   Future<Map<String, dynamic>?> fetchMovieDetail(String slug) async {
     try {
-      final url = Uri.parse('${ApiConstants.baseUrl}/phim/$slug');
-      final response = await http.get(url);
+      final url = '${ApiConstants.baseUrl}/phim/$slug';
+      final response = await _cachedGet(url, _dioClient.detailCacheOptions());
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = response.data;
         if (data['status'] == true) {
-          return data; // Trả về Map chứa cả key 'movie' và 'episodes'
+          return data;
         }
       }
     } catch (e) {
@@ -183,11 +193,11 @@ class MovieService {
 
   Future<List<Movie>> searchMovies(String keyword) async {
     try {
-      final url = Uri.parse('${ApiConstants.baseUrl}/v1/api/tim-kiem?keyword=$keyword&limit=20');
-      final response = await http.get(url);
+      final url = '${ApiConstants.baseUrl}/v1/api/tim-kiem?keyword=$keyword&limit=20';
+      final response = await _cachedGet(url, _dioClient.searchCacheOptions());
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = response.data;
         if (data['status'] == 'success' || data['data'] != null) {
           final List items = data['data']['items'] ?? [];
 
@@ -210,8 +220,8 @@ class MovieService {
 
   Future<Map<String, dynamic>> fetchMoviesByCategory(String categorySlug, int page) async {
     try {
-      final url = Uri.parse('${ApiConstants.categoryDetail(categorySlug)}?page=$page&limit=12');
-      return _fetchMoviesFromUrl(url);
+      final url = '${ApiConstants.categoryDetail(categorySlug)}?page=$page&limit=12';
+      return _fetchMoviesFromUrl(url, _dioClient.categoryCacheOptions());
     } catch (e) {
       print("Lỗi fetchMoviesByCategory: $e");
     }
@@ -220,8 +230,8 @@ class MovieService {
 
   Future<Map<String, dynamic>> fetchMoviesByCountry(String countrySlug, int page) async {
     try {
-      final url = Uri.parse('https://phimapi.com/v1/api/quoc-gia/$countrySlug?page=$page&limit=12');
-      return _fetchMoviesFromUrl(url);
+      final url = 'https://phimapi.com/v1/api/quoc-gia/$countrySlug?page=$page&limit=12';
+      return _fetchMoviesFromUrl(url, _dioClient.categoryCacheOptions());
     } catch (e) {
       print("Lỗi fetchMoviesByCountry: $e");
     }
@@ -230,37 +240,35 @@ class MovieService {
 
   Future<Map<String, dynamic>> fetchMoviesByType(String type, int page) async {
     try {
-      final url = Uri.parse('${ApiConstants.baseUrl}/v1/api/danh-sach/$type?page=$page&limit=12');
-      return _fetchMoviesFromUrl(url);
+      final url = '${ApiConstants.baseUrl}/v1/api/danh-sach/$type?page=$page&limit=12';
+      return _fetchMoviesFromUrl(url, _dioClient.categoryCacheOptions());
     } catch (e) {
       print("Lỗi fetchMoviesByType: $e");
     }
     return {'movies': <Movie>[], 'totalPages': 1};
   }
 
-  // Hàm helper dùng chung để parse dữ liệu từ API v1
-  Future<Map<String, dynamic>> _fetchMoviesFromUrl(Uri url) async {
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      
+  Future<Map<String, dynamic>> _fetchMoviesFromUrl(String url, CacheOptions cacheOptions) async {
+    try {
+      final response = await _cachedGet(url, cacheOptions);
+      final data = response.data;
+
       List items = [];
       int totalPages = 1;
-      
+
       if (data['data'] != null && data['data']['items'] != null) {
         items = data['data']['items'];
         totalPages = data['data']['params']?['pagination']?['totalPages'] ?? 1;
       }
 
-      final movies = items.map((json) {
-        return Movie.fromJson(json);
-      }).toList();
-      
+      final movies = items.map((json) => Movie.fromJson(json)).toList();
+
       return {
         'movies': movies,
         'totalPages': totalPages,
       };
+    } catch (e) {
+      return {'movies': <Movie>[], 'totalPages': 1};
     }
-    return {'movies': <Movie>[], 'totalPages': 1};
   }
 }

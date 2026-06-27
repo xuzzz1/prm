@@ -15,6 +15,10 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
   http: ^1.2.1
+  dio: ^5.4.0
+  dio_cache_interceptor: ^3.5.0
+  dio_cache_interceptor_hive_store: ^4.0.0
+  path_provider: ^2.1.2
   cached_network_image: ^3.3.1
   google_fonts: ^6.2.1
   carousel_slider: ^5.0.0
