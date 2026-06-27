@@ -4,6 +4,7 @@ import 'package:provider/provider.dart'; // Thêm import
 import '../../models/movie.dart';
 import '../../providers/movie_provider.dart'; // Thêm import
 import '../../services/movie_service.dart';
+import '../../main.dart' show snackBarKey;
 import '../../widgets/movie_card.dart';
 
 class CategoryMoviesScreen extends StatefulWidget {
@@ -37,23 +38,34 @@ class _CategoryMoviesScreenState extends State<CategoryMoviesScreen> {
 
   Future<void> _loadCategoryMovies() async {
     setState(() => _isLoading = true);
-    
-    Map<String, dynamic> result;
-    if (widget.isCountry) {
-      result = await _movieService.fetchMoviesByCountry(widget.categorySlug, _currentPage);
-    } else {
-      result = await _movieService.fetchMoviesByCategory(widget.categorySlug, _currentPage);
+
+    try {
+      Map<String, dynamic> result;
+      if (widget.isCountry) {
+        result = await _movieService.fetchMoviesByCountry(widget.categorySlug, _currentPage);
+      } else {
+        result = await _movieService.fetchMoviesByCategory(widget.categorySlug, _currentPage);
+      }
+
+      final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+      final filteredMovies = movieProvider.filterHiddenMovies(result['movies'] ?? []);
+
+      if (!mounted) return;
+      setState(() {
+        _movies = filteredMovies;
+        _totalPages = result['totalPages'] ?? 1;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      snackBarKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải phim: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      setState(() => _isLoading = false);
     }
-
-    // LỌC PHIM ẨN
-    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
-    final filteredMovies = movieProvider.filterHiddenMovies(result['movies'] ?? []);
-
-    setState(() {
-      _movies = filteredMovies;
-      _totalPages = result['totalPages'] ?? 1;
-      _isLoading = false;
-    });
   }
 
   void _goToPage(int page) {

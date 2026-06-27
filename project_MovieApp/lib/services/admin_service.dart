@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/app_user.dart';
 import 'movie_service.dart';
@@ -95,7 +94,7 @@ class AdminService {
         return true;
       }
     } catch (e) {
-      debugPrint("Lỗi addFeaturedMovie: $e");
+      // Non-critical: movie validation failed
     }
     return false;
   }
@@ -109,8 +108,7 @@ class AdminService {
   Future<Map<String, dynamic>> getDashboardStats() async {
     try {
       final usersSnapshot = await _db.ref('users').get();
-      final moviesSnapshot = await _db.ref('settings/banners').get(); // Ví dụ
-      
+
       int userCount = 0;
       if (usersSnapshot.exists) {
         final data = usersSnapshot.value as Map;
@@ -139,26 +137,23 @@ class AdminService {
   Future<List<AppUser>> getAllUsers() async {
     try {
       final snapshot = await _db.ref('users').get();
-      debugPrint("DEBUG: Users snapshot exists: ${snapshot.exists}");
       if (snapshot.exists) {
         final data = snapshot.value;
-        debugPrint("DEBUG: Raw users data type: ${data.runtimeType}");
-        
+
         if (data is Map) {
           final List<AppUser> users = [];
           data.forEach((key, value) {
             try {
               users.add(AppUser.fromMap(key.toString(), Map<dynamic, dynamic>.from(value as Map)));
-            } catch (e) {
-              debugPrint("DEBUG: Error parsing user $key: $e");
+            } catch (_) {
+              // Skip malformed user records
             }
           });
-          debugPrint("DEBUG: Total users parsed: ${users.length}");
           return users;
         }
       }
-    } catch (e) {
-      debugPrint("DEBUG: Error in getAllUsers: $e");
+    } catch (_) {
+      return [];
     }
     return [];
   }

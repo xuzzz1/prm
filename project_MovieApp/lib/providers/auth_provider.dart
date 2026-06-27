@@ -38,8 +38,8 @@ class AuthProvider extends ChangeNotifier {
           'email': _user!.email,
           'role': 'admin',
         });
-      } catch (e) {
-        debugPrint("DEBUG: Error updating Admin in DB: $e");
+      } catch (_) {
+        // Silently fail; role assignment is non-critical
       }
       return;
     }
@@ -58,11 +58,9 @@ class AuthProvider extends ChangeNotifier {
             'email': _user!.email,
             'role': 'user',
           });
-          debugPrint("DEBUG: Auto-created DB entry for existing Auth user: $uid");
         }
       }
-    } catch (e) {
-      debugPrint("DEBUG: Error in fetchUserRole: $e");
+    } catch (_) {
       _role = 'user';
     }
   }
@@ -112,17 +110,11 @@ class AuthProvider extends ChangeNotifier {
 
       if (credential.user != null) {
         await credential.user!.updateDisplayName(name);
-        
-        debugPrint("DEBUG: Attempting to save user to DB: ${credential.user!.uid}");
-        // Lưu role mặc định là user vào Database
+
         await _db.ref('users/${credential.user!.uid}').set({
           'name': name,
           'email': email,
           'role': 'user',
-        }).then((_) {
-          debugPrint("DEBUG: User saved successfully to DB");
-        }).catchError((error) {
-          debugPrint("DEBUG: Error saving user to DB: $error");
         });
         
         _role = 'user';

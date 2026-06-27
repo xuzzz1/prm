@@ -48,8 +48,8 @@ class AdminProvider extends ChangeNotifier {
       
       // Sắp xếp: Admin lên đầu
       _sortUsers();
-    } catch (e) {
-      debugPrint("Lỗi fetchAdminData: $e");
+    } catch (_) {
+      // Silently fail with empty defaults
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -76,8 +76,8 @@ class AdminProvider extends ChangeNotifier {
     
     try {
       _recentMovies = await _movieService.searchMovies(query);
-    } catch (e) {
-      debugPrint("Lỗi searchMovies: $e");
+    } catch (_) {
+      // Silently fail
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -95,8 +95,8 @@ class AdminProvider extends ChangeNotifier {
         _hiddenSlugs.remove(slug);
       }
       notifyListeners();
-    } catch (e) {
-      debugPrint("Lỗi updateHiddenMovie: $e");
+    } catch (_) {
+      // Silently fail
     }
   }
 
@@ -112,17 +112,18 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Kiểm tra phim tồn tại trước khi add
       final movie = await _movieService.fetchMovieDetail(slug);
       if (movie == null) {
+        _isLoading = false;
+        notifyListeners();
         return "Không tìm thấy phim với Slug này!";
       }
 
       await _adminService.addBanner(slug);
       _bannerSlugs.add(slug);
       return null;
-    } catch (e) {
-      return e.toString();
+    } catch (_) {
+      return "Đã xảy ra lỗi khi thêm banner.";
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -134,8 +135,8 @@ class AdminProvider extends ChangeNotifier {
       await _adminService.removeBanner(slug);
       _bannerSlugs.remove(slug);
       notifyListeners();
-    } catch (e) {
-      debugPrint("Lỗi removeBanner: $e");
+    } catch (_) {
+      // Silently fail
     }
   }
 
@@ -144,8 +145,8 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _adminService.updateBanners(newOrder);
-    } catch (e) {
-      debugPrint("Lỗi updateBannerOrder: $e");
+    } catch (_) {
+      // Silently fail
     }
   }
 
@@ -154,15 +155,14 @@ class AdminProvider extends ChangeNotifier {
     final newRole = user.role == 'admin' ? 'user' : 'admin';
     try {
       await _adminService.updateUserRole(user.uid, newRole);
-      // Cập nhật local state
       final index = _users.indexWhere((u) => u.uid == user.uid);
       if (index != -1) {
         _users[index] = AppUser(uid: user.uid, name: user.name, email: user.email, role: newRole);
-        _sortUsers(); // Sắp xếp lại sau khi đổi role
+        _sortUsers();
         notifyListeners();
       }
-    } catch (e) {
-      debugPrint("Lỗi toggleUserRole: $e");
+    } catch (_) {
+      // Silently fail
     }
   }
 
@@ -171,8 +171,8 @@ class AdminProvider extends ChangeNotifier {
       await _adminService.deleteUserFromDb(uid);
       _users.removeWhere((u) => u.uid == uid);
       notifyListeners();
-    } catch (e) {
-      debugPrint("Lỗi deleteUser: $e");
+    } catch (_) {
+      // Silently fail
     }
   }
 }

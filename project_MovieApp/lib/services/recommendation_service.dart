@@ -38,8 +38,8 @@ class RecommendationService {
         );
         return _cachedPrefs!;
       }
-    } catch (e) {
-      print('Error loading recommendation prefs: $e');
+    } catch (_) {
+      // Non-critical; Firebase preferences are optional
     }
 
     // If not found in DB, return empty but check cache one last time
@@ -56,8 +56,8 @@ class RecommendationService {
     try {
       final json = prefs.toJson();
       await _db.ref('recommendation_prefs/$userId').set(json);
-    } catch (e, stack) {
-      print('[RecommendationService] Error saving prefs: $e\n$stack');
+    } catch (_) {
+      // Non-critical; Firebase preferences are optional
     }
   }
 

@@ -42,33 +42,25 @@ class MovieService {
   }
 
   Future<List<Movie>> fetchTrendingMovies() async {
-    try {
-      final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1';
-      final data = await _cachedGet(url, (await _getDioClient()).quickListCacheOptions());
+    final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=1';
+    final data = await _cachedGet(url, (await _getDioClient()).quickListCacheOptions());
 
-      if (data['items'] != null) {
-        final List items = data['items'] ?? [];
-        return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
-      }
-    } catch (e) {
-      // Silently handle
+    if (data['items'] != null) {
+      final List items = data['items'] ?? [];
+      return items.map((movieJson) => Movie.fromJson(movieJson)).toList();
     }
-    return [];
+    throw Exception('Không thể tải danh sách phim thịnh hành.');
   }
 
   Future<List<Movie>> fetchAllMovies({int pages = 3}) async {
     final allMovies = <Movie>[];
     for (int page = 1; page <= pages; page++) {
-      try {
-        final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=$page';
-        final cacheOptions = (await _getDioClient()).quickListCacheOptions();
-        final data = await _cachedGet(url, cacheOptions);
-        final List items = data['items'] ?? [];
-        final movies = items.map((json) => Movie.fromJson(json)).toList();
-        allMovies.addAll(movies);
-      } catch (e) {
-        // Silently handle
-      }
+      final url = '${ApiConstants.baseUrl}/danh-sach/phim-moi-cap-nhat?page=$page';
+      final cacheOptions = (await _getDioClient()).quickListCacheOptions();
+      final data = await _cachedGet(url, cacheOptions);
+      final List items = data['items'] ?? [];
+      final movies = items.map((json) => Movie.fromJson(json)).toList();
+      allMovies.addAll(movies);
     }
     return allMovies;
   }
@@ -166,41 +158,33 @@ class MovieService {
   }
 
   Future<Map<String, dynamic>?> fetchMovieDetail(String slug) async {
-    try {
-      final url = '${ApiConstants.baseUrl}/phim/$slug';
-      final data = await _cachedGet(url, (await _getDioClient()).detailCacheOptions());
+    final url = '${ApiConstants.baseUrl}/phim/$slug';
+    final data = await _cachedGet(url, (await _getDioClient()).detailCacheOptions());
 
-      if (data['status'] == true) {
-        return data;
-      }
-    } catch (e) {
-      // Silently handle
+    if (data['status'] == true) {
+      return data;
     }
     return null;
   }
 
   Future<List<Movie>> searchMovies(String keyword) async {
-    try {
-      final url = '${ApiConstants.baseUrl}/v1/api/tim-kiem?keyword=$keyword&limit=20';
-      final data = await _cachedGet(url, (await _getDioClient()).searchCacheOptions());
+    final url = '${ApiConstants.baseUrl}/v1/api/tim-kiem?keyword=$keyword&limit=20';
+    final data = await _cachedGet(url, (await _getDioClient()).searchCacheOptions());
 
-      if (data['status'] == 'success' || data['data'] != null) {
-        final List items = data['data']?['items'] ?? [];
+    if (data['status'] == 'success' || data['data'] != null) {
+      final List items = data['data']?['items'] ?? [];
 
-        return items.map((json) {
-          return Movie(
-            name: json['name'] ?? '',
-            slug: json['slug'] ?? '',
-            thumbUrl: json['thumb_url'] ?? '',
-            posterUrl: json['poster_url'] ?? '',
-            year: json['year'] ?? 0,
-          );
-        }).toList();
-      }
-    } catch (e) {
-      // Silently handle
+      return items.map((json) {
+        return Movie(
+          name: json['name'] ?? '',
+          slug: json['slug'] ?? '',
+          thumbUrl: json['thumb_url'] ?? '',
+          posterUrl: json['poster_url'] ?? '',
+          year: json['year'] ?? 0,
+        );
+      }).toList();
     }
-    return [];
+    throw Exception('Không thể tìm kiếm. Vui lòng thử lại.');
   }
 
   Future<Map<String, dynamic>> fetchMoviesByCategory(String categorySlug, int page) async {

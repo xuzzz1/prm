@@ -8,11 +8,11 @@ import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
 import 'providers/admin_provider.dart'; // Thêm import
-import 'screens/auth/splash_screen.dart'; // Thêm import mới
-import 'screens/auth/login_screen.dart';
+import 'screens/auth/splash_screen.dart';
 import 'themes/app_theme.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> snackBarKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +41,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      scaffoldMessengerKey: snackBarKey,
       debugShowCheckedModeBanner: false,
       title: 'Movie App',
       theme: AppTheme.darkTheme,

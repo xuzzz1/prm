@@ -77,16 +77,13 @@ class ReviewProvider extends ChangeNotifier {
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
 
-      print("Đang gửi review lên Firebase: reviews/$movieSlug/${user.uid}");
       await _database.ref('reviews/$movieSlug/${user.uid}').set(review.toJson());
-      print("Gửi review thành công!");
 
       if (movie != null) {
         _recommendationService.updateAffinityFromRating(movie, rating);
       }
     } catch (e) {
-      print("Lỗi khi gửi review: $e");
-      rethrow; // Đẩy lỗi ra để UI có thể bắt được
+      rethrow;
     }
   }
 
@@ -94,9 +91,7 @@ class ReviewProvider extends ChangeNotifier {
   Future<void> deleteReview(String movieSlug, String userId) async {
     try {
       await _database.ref('reviews/$movieSlug/$userId').remove();
-      print("Đã xóa review thành công!");
     } catch (e) {
-      print("Lỗi khi xóa review: $e");
       rethrow;
     }
   }
@@ -119,9 +114,7 @@ class ReviewProvider extends ChangeNotifier {
       );
 
       await replyRef.set(reply.toJson());
-      print("Đã gửi phản hồi thành công!");
     } catch (e) {
-      print("Lỗi khi gửi phản hồi: $e");
       rethrow;
     }
   }
@@ -138,9 +131,7 @@ class ReviewProvider extends ChangeNotifier {
         'text': newText,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
-      print("Đã cập nhật phản hồi thành công!");
     } catch (e) {
-      print("Lỗi khi cập nhật phản hồi: $e");
       rethrow;
     }
   }
@@ -149,9 +140,7 @@ class ReviewProvider extends ChangeNotifier {
   Future<void> deleteReply(String movieSlug, String reviewUserId, String replyId) async {
     try {
       await _database.ref('reviews/$movieSlug/$reviewUserId/replies/$replyId').remove();
-      print("Đã xóa phản hồi thành công!");
     } catch (e) {
-      print("Lỗi khi xóa phản hồi: $e");
       rethrow;
     }
   }

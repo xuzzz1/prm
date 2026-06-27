@@ -6,6 +6,7 @@ import '../../services/recommendation_service.dart';
 import '../../models/movie.dart';
 import '../../providers/movie_provider.dart'; // Thêm import
 import '../../widgets/movie_card.dart';
+import '../../main.dart' show snackBarKey;
 import 'movie_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -35,23 +36,34 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
-    final history = await _searchService.getHistory();
-    final trending = await _movieService.fetchTrendingMovies();
-    
-    // Lọc phim trending
-    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
-    final filteredTrending = movieProvider.filterHiddenMovies(trending);
+    try {
+      final history = await _searchService.getHistory();
+      final trending = await _movieService.fetchTrendingMovies();
 
-    setState(() {
-      _history = history;
-      _trendingMovies = filteredTrending.take(5).toList();
-      _isLoading = false;
-    });
+      final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+      final filteredTrending = movieProvider.filterHiddenMovies(trending);
+
+      if (!mounted) return;
+      setState(() {
+        _history = history;
+        _trendingMovies = filteredTrending.take(5).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      snackBarKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải dữ liệu: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _onSearch(String query) async {
     if (query.trim().isEmpty) return;
-    
+
     setState(() {
       _isSearching = true;
       _isLoading = true;
@@ -59,19 +71,30 @@ class _SearchScreenState extends State<SearchScreen> {
 
     await _searchService.addSearchTerm(query);
     _recommendationService.updateAffinityFromSearch(query);
-    
-    final results = await _movieService.searchMovies(query);
-    final history = await _searchService.getHistory();
 
-    // LỌC Ở ĐÂY: Loại bỏ những phim Admin đã ẩn
-    final movieProvider = Provider.of<MovieProvider>(context, listen: false);
-    final filteredResults = movieProvider.filterHiddenMovies(results);
+    try {
+      final results = await _movieService.searchMovies(query);
+      final history = await _searchService.getHistory();
 
-    setState(() {
-      _searchResults = filteredResults;
-      _history = history;
-      _isLoading = false;
-    });
+      final movieProvider = Provider.of<MovieProvider>(context, listen: false);
+      final filteredResults = movieProvider.filterHiddenMovies(results);
+
+      if (!mounted) return;
+      setState(() {
+        _searchResults = filteredResults;
+        _history = history;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      snackBarKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('$e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _clearHistory() async {

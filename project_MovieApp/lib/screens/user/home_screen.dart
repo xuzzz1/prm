@@ -10,6 +10,7 @@ import '../../providers/movie_provider.dart';
 import '../../widgets/movie_card.dart';
 import '../../constants/api_constants.dart';
 import '../../themes/app_theme.dart';
+import '../../main.dart' show snackBarKey;
 import 'category_screen.dart'; 
 import 'favorite_screen.dart';
 import 'profile_screen.dart';
@@ -121,19 +122,31 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   /// Phase 1: fetch 10 list pages and set the sorted sections immediately.
   /// This makes banner/trending/recent appear without waiting for detail fetches.
   Future<void> _initializeData() async {
-    final quickResult = await movieService.fetchMoviesForHomeQuick(pages: 10);
-    if (!mounted) return;
+    try {
+      final quickResult = await movieService.fetchMoviesForHomeQuick(pages: 10);
+      if (!mounted) return;
 
-    setState(() {
-      bannerMovies = quickResult.bannerMovies;
-      trendingMovies = quickResult.trendingMovies;
-      recentlyUpdatedMovies = quickResult.recentlyUpdatedMovies;
-      isLoading = false;
-    });
+      setState(() {
+        bannerMovies = quickResult.bannerMovies;
+        trendingMovies = quickResult.trendingMovies;
+        recentlyUpdatedMovies = quickResult.recentlyUpdatedMovies;
+        isLoading = false;
+      });
 
-    // Phase 2 — background: enrich the full pool with detail data,
-    // then update recommendations and movie-based section
-    _loadEnrichedPool(quickResult.allMovies);
+      // Phase 2 — background: enrich the full pool with detail data,
+      // then update recommendations and movie-based section
+      _loadEnrichedPool(quickResult.allMovies);
+    } catch (e) {
+      if (!mounted) return;
+      snackBarKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải dữ liệu: $e'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      setState(() => isLoading = false);
+    }
   }
 
   /// Phase 2: detail-enrich the already-fetched [pool], then update recommendations
@@ -143,43 +156,13 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     _loadRecommendations();
     _loadMovieBasedSection();
 
-    final allMovies = await movieService.fetchMoviesForHomeEnriched(
-      pool: pool,
-    );
-
-    if (!mounted) return;
-
-    // Update the shared pool so recommendations/movie-based sections score
-    // against enriched data (with real tmdb ratings). Banner/trending/recent
-    // are NOT overwritten — they stay from Phase 1 (fast, already correct).
-    setState(() {
-      _homePool = allMovies;
-    });
-
-    print('=== PHASE 2: ENRICHED POOL (${allMovies.length}) ===');
-    print('--- by rating (top 10) ---');
-    final byRating = List<Movie>.from(allMovies)
-      ..sort((a, b) => (b.tmdbVoteAverage ?? 0.0).compareTo(a.tmdbVoteAverage ?? 0.0));
-    for (final m in byRating.take(10)) {
-      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | tmdbVoteCount: ${m.tmdbVoteCount}');
+    try {
+      final allMovies = await movieService.fetchMoviesForHomeEnriched(pool: pool);
+      if (!mounted) return;
+      setState(() => _homePool = allMovies);
+    } catch (_) {
+      // Enrichment is best-effort; keep pool from Phase 1
     }
-    print('--- by votes (top 10) ---');
-    final byVotes = List<Movie>.from(allMovies)
-      ..sort((a, b) => (b.tmdbVoteCount ?? 0).compareTo(a.tmdbVoteCount ?? 0));
-    for (final m in byVotes.take(10)) {
-      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | tmdbVoteCount: ${m.tmdbVoteCount}');
-    }
-    print('--- by modified (top 10) ---');
-    final byModified = List<Movie>.from(allMovies)
-      ..sort((a, b) {
-        final aTime = a.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bTime = b.modifiedTime ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bTime.compareTo(aTime);
-      });
-    for (final m in byModified.take(10)) {
-      print('${m.name} | tmdbVoteAverage: ${m.tmdbVoteAverage} | modifiedTime: ${m.modifiedTime}');
-    }
-    print('=== END PHASE 2 ===');
   }
 
   Future<void> _loadMovieBasedSection() async {

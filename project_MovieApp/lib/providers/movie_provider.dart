@@ -201,8 +201,8 @@ class MovieProvider extends ChangeNotifier {
         await _saveLocalHistory();
         notifyListeners();
       }
-    } catch (e) {
-      print("Lỗi syncHistoryFromFirebase: $e");
+      } catch (e) {
+      // Sync failures are non-critical; local history remains available
     }
   }
 
@@ -226,8 +226,8 @@ class MovieProvider extends ChangeNotifier {
     if (user != null) {
       try {
         await _db.ref('watch_history/${user.uid}/${movie.slug}').set(movie.toJson());
-      } catch (e) {
-        print("Lỗi đẩy lịch sử lên Firebase: $e");
+      } catch (_) {
+        // Firebase sync is non-critical; local history is preserved
       }
     }
   }
