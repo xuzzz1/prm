@@ -5,6 +5,13 @@ import 'package:path_provider/path_provider.dart';
 
 class DioClient {
   static DioClient? _instance;
+  static DioClient get instance {
+    if (_instance == null) {
+      throw StateError('DioClient not initialized. Call DioClient.getInstance() first.');
+    }
+    return _instance!;
+  }
+
   late Dio _dio;
   late DioCacheInterceptor _cacheInterceptor;
   late HiveCacheStore _cacheStore;
@@ -18,6 +25,8 @@ class DioClient {
     }
     return _instance!;
   }
+
+  static bool get isInitialized => _instance != null;
 
   Future<void> _init() async {
     final directory = await getApplicationDocumentsDirectory();
@@ -49,8 +58,10 @@ class DioClient {
   }
 
   Dio get dio => _dio;
+  HiveCacheStore get cacheStore => _cacheStore;
 
-  /// Quick list cache: stale-while-revalidate (always fetch, cache result)
+  /// Quick list cache: always refresh from network, serve stale while refreshing (stale-while-revalidate)
+  /// For home screen — prioritize fresh data
   CacheOptions quickListCacheOptions() {
     return CacheOptions(
       store: _cacheStore,

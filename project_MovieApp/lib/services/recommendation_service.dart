@@ -399,24 +399,24 @@ class RecommendationService {
   }
 
   ScoredMovie scoreMovie(Movie movie, RecommendationPreference prefs, {double trendingWeight = 0.0}) {
-    final affinity = _avgCategoryAffinity(movie, prefs);
+    final category = _avgCategoryAffinity(movie, prefs);
     final country = _avgCountryAffinity(movie, prefs);
     final actors = _actorScore(movie, prefs);
     final freshness = _freshnessScore(movie);
 
     // TĂNG TRỌNG SỐ 
-    final contentScore = (affinity * 0.6) + (country * 0.2) + (actors * 0.2);
+    final contentScore = (category * 0.6) + (country * 0.2) + (actors * 0.2);
     
     // Content giờ chiếm 85%, Freshness chỉ chiếm 5%, Trending 10%
     final totalScore = (contentScore * 0.85) + (freshness * 0.05) + (trendingWeight * 0.1);
 
-    final reason = _generateMatchReason(movie, prefs, affinity, actors);
+    final reason = _generateMatchReason(movie, prefs, category, actors);
 
     return ScoredMovie(
       movie: movie,
       totalScore: totalScore,
       contentScore: contentScore,
-      affinityScore: affinity,
+      affinityScore: category,
       actorScore: actors,
       trendingScore: trendingWeight,
       freshnessScore: freshness,
@@ -443,8 +443,7 @@ class RecommendationService {
     final watchedSet = prefs.watchedSlugs.toSet();
     final unwatched = movies.where((m) => !watchedSet.contains(m.slug)).toList();
 
-    // Fall back to full list if too few unwatched movies remain
-    final pool = unwatched.length < 5 ? movies : unwatched;
+    final pool = unwatched.isEmpty ? movies : unwatched;
     final scored = pool.map((m) => scoreMovie(m, prefs, trendingWeight: trendingWeight)).toList();
     
     // EXISTING USER LOGIC: Filter out movies that have NO interest match
@@ -535,7 +534,6 @@ class RecommendationService {
       case 'hinh-su': return 'Hình Sự';
       case 'am-nhac': return 'Âm Nhạc';
       case 'tai-lieu': return 'Tài Liệu';
-      case 'phim-sex': return 'Phim Sex';
       case 'kinh-dong': return 'Kinh Đông';
       case 'tv-show': return 'TV Show';
       case 'thieu-nhi': return 'Thiếu Nhi';
