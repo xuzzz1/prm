@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import '../models/movie.dart';
 import 'dio_client.dart';
@@ -11,18 +12,68 @@ class HomeQuickResult {
   final List<Movie> bannerMovies;
   final List<Movie> trendingMovies;
   final List<Movie> recentlyUpdatedMovies;
+  final DateTime fetchedAt;
 
   HomeQuickResult({
     required this.allMovies,
     required this.bannerMovies,
     required this.trendingMovies,
     required this.recentlyUpdatedMovies,
+    required this.fetchedAt,
   });
+
+  Map<String, dynamic> toJson() => {
+        'allMovies': allMovies.map((m) => m.toJson()).toList(),
+        'bannerMovies': bannerMovies.map((m) => m.toJson()).toList(),
+        'trendingMovies': trendingMovies.map((m) => m.toJson()).toList(),
+        'recentlyUpdatedMovies': recentlyUpdatedMovies.map((m) => m.toJson()).toList(),
+        'fetchedAt': fetchedAt.toIso8601String(),
+      };
+
+  factory HomeQuickResult.fromJson(Map<String, dynamic> json) {
+    return HomeQuickResult(
+      allMovies: (json['allMovies'] as List).map((m) => Movie.fromJson(m)).toList(),
+      bannerMovies: (json['bannerMovies'] as List).map((m) => Movie.fromJson(m)).toList(),
+      trendingMovies: (json['trendingMovies'] as List).map((m) => Movie.fromJson(m)).toList(),
+      recentlyUpdatedMovies: (json['recentlyUpdatedMovies'] as List).map((m) => Movie.fromJson(m)).toList(),
+      fetchedAt: DateTime.parse(json['fetchedAt'] as String),
+    );
+  }
 }
 
 class MovieService {
+  static const _homeCacheKey = 'home_quick_cache';
+  static const _homeCacheMaxAge = Duration(hours: 2);
+  SharedPreferences? _prefs;
+
   Future<DioClient> _getDioClient() async {
     return await DioClient.getInstance();
+  }
+
+  Future<SharedPreferences> get _preferences async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
+  Future<HomeQuickResult?> getCachedHomeResult() async {
+    try {
+      final prefs = await _preferences;
+      final raw = prefs.getString(_homeCacheKey);
+      if (raw == null) return null;
+
+      final cached = HomeQuickResult.fromJson(jsonDecode(raw));
+      if (DateTime.now().difference(cached.fetchedAt) > _homeCacheMaxAge) {
+        await prefs.remove(_homeCacheKey);
+        return null;
+      }
+      return cached;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void invalidateHomeCache() {
+    _preferences.then((prefs) => prefs.remove(_homeCacheKey));
   }
 
   Future<Map<String, dynamic>> _cachedGet(
@@ -65,7 +116,7 @@ class MovieService {
     return allMovies;
   }
 
-  /// Phase 1 — fetches 10 list pages, sorts sections, and returns immediately.
+  /// Phase 1 — fetches 10 list pages, sorts sections, persists to disk, and returns.
   /// No detail enrichment yet. Designed for the home screen's fast-first render.
   Future<HomeQuickResult> fetchMoviesForHomeQuick({int pages = 10}) async {
     final allMovies = await fetchAllMovies(pages: pages);
@@ -83,12 +134,20 @@ class MovieService {
         return bTime.compareTo(aTime);
       });
 
-    return HomeQuickResult(
+    final result = HomeQuickResult(
       allMovies: allMovies,
       bannerMovies: byRating.take(10).toList(),
       trendingMovies: byVotes.take(10).toList(),
       recentlyUpdatedMovies: byModified.take(10).toList(),
+      fetchedAt: DateTime.now(),
     );
+
+    try {
+      final prefs = await _preferences;
+      await prefs.setString(_homeCacheKey, jsonEncode(result.toJson()));
+    } catch (_) {}
+
+    return result;
   }
 
   /// Phase 2 — enriches an already-fetched [pool] by batch-fetching details

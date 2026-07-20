@@ -89,6 +89,7 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
 
   MovieBasedSection? _movieBasedSection;
   List<ScoredMovie> _movieBasedMovies = [];
+  ActorBasedSection? _actorBasedSection;
   int _refreshCounter = 0;
 
   /// Shared pool populated by Phase 2 enrichment. Used by recommendations and
@@ -123,6 +124,18 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   /// This makes banner/trending/recent appear without waiting for detail fetches.
   Future<void> _initializeData() async {
     try {
+      final cached = await movieService.getCachedHomeResult();
+      if (cached != null) {
+        setState(() {
+          bannerMovies = cached.bannerMovies;
+          trendingMovies = cached.trendingMovies;
+          recentlyUpdatedMovies = cached.recentlyUpdatedMovies;
+          isLoading = false;
+        });
+        _loadEnrichedPool(cached.allMovies);
+        return;
+      }
+
       final quickResult = await movieService.fetchMoviesForHomeQuick(pages: 10);
       if (!mounted) return;
 
@@ -133,8 +146,6 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
         isLoading = false;
       });
 
-      // Phase 2 — background: enrich the full pool with detail data,
-      // then update recommendations and movie-based section
       _loadEnrichedPool(quickResult.allMovies);
     } catch (e) {
       if (!mounted) return;
@@ -155,6 +166,7 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     _homePool = pool;
     _loadRecommendations();
     _loadMovieBasedSection();
+    _loadActorBasedSection();
 
     try {
       final allMovies = await movieService.fetchMoviesForHomeEnriched(pool: pool);
@@ -178,6 +190,16 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     }
   }
 
+  Future<void> _loadActorBasedSection() async {
+    if (_homePool.isEmpty) return;
+    final actorSection = await recommendationService.getTopActorSection(_homePool, limit: 12);
+    print('[DEBUG] ActorBasedSection: $actorSection');
+    if (!mounted) return;
+    setState(() {
+      _actorBasedSection = actorSection;
+    });
+  }
+
   Future<void> _refreshRecommendations() async {
     recommendationService.invalidateCache();
     final prefs = await recommendationService.currentPrefs;
@@ -189,6 +211,9 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
       }),
       Future(() async {
         await _loadMovieBasedSection();
+      }),
+      Future(() async {
+        await _loadActorBasedSection();
       }),
     ]);
   }
@@ -272,14 +297,19 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
                     _buildSectionTitle(_movieBasedSection!.seedMovie.name, subtitle: _movieBasedSection!.reason),
                     _buildMovieBasedHorizontalList(_movieBasedMovies),
                   ],
+                  if (_actorBasedSection != null && _actorBasedSection!.movies.isNotEmpty) ...[
+                    SizedBox(height: _debugActorSection(_actorBasedSection!)),
+                    _buildSectionTitle('Phim của ${_actorBasedSection!.actorName}', subtitle: 'Vì bạn thích diễn viên này'),
+                    _buildMovieBasedHorizontalList(_actorBasedSection!.movies),
+                  ],
                   const SizedBox(height: 24),
                   _buildSectionTitle("Recently Updated"),
                   _buildMovieHorizontalList(recentlyUpdatedMovies),
                   const SizedBox(height: 24),
-                  _buildSectionTitle("Recommend"),
-                  isRecommendedLoading
-                      ? const SizedBox(height: 180, child: Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber)))
-                      : _buildRecommendedHorizontalList(),
+                  // _buildSectionTitle("Recommend"),
+                  // isRecommendedLoading
+                  //     ? const SizedBox(height: 180, child: Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber)))
+                  //     : _buildRecommendedHorizontalList(),
                   const SizedBox(height: 24),
                   _buildSectionTitle("Trending"),
                   _buildMovieHorizontalList(trendingMovies),
@@ -424,5 +454,10 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
         },
       ),
     );
+  }
+
+  double _debugActorSection(ActorBasedSection section) {
+    print('[DEBUG BUILD] rendering actor section: ${section.actorName} with ${section.movies.length} movies');
+    return 24;
   }
 }

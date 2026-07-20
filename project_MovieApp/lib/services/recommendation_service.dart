@@ -611,6 +611,54 @@ class RecommendationService {
       reason: 'Vì bạn đã xem phim ${bestMovie.name}',
     );
   }
+
+  /// Returns the best "Phim của [Diễn Viên]" section.
+  /// Picks the actor with the highest affinity, finds movies from that actor
+  /// in the pool, and returns up to [limit] scored results.
+  Future<ActorBasedSection?> getTopActorSection(List<Movie> pool, {int limit = 12}) async {
+    final prefs = await currentPrefs;
+    print('[DEBUG getTopActorSection] prefs: $prefs');
+    if (prefs == null || prefs.actorAffinity.isEmpty) {
+      print('[DEBUG getTopActorSection] early return: prefs null=${prefs == null}, actorAffinity empty=${prefs?.actorAffinity.isEmpty}');
+      return null;
+    }
+
+    final topEntry = prefs.actorAffinity.entries.reduce(
+      (a, b) => a.value > b.value ? a : b,
+    );
+    print('[DEBUG getTopActorSection] topEntry: ${topEntry.key} = ${topEntry.value}');
+    if (topEntry.value < 0.1) {
+      print('[DEBUG getTopActorSection] below threshold, returning null');
+      return null;
+    }
+
+    final actorName = topEntry.key;
+    final actorMovies = pool.where((m) => m.actors.contains(actorName)).toList();
+    if (actorMovies.isEmpty) return null;
+
+    final watchedSet = prefs.watchedSlugs.toSet();
+    final unwatched = actorMovies.where((m) => !watchedSet.contains(m.slug)).toList();
+    final candidates = unwatched.isNotEmpty ? unwatched : actorMovies;
+
+    final scored = candidates.map((m) {
+      final matchReason = 'Phim của $actorName';
+      return ScoredMovie(
+        movie: m,
+        totalScore: topEntry.value,
+        contentScore: 0,
+        affinityScore: 0,
+        actorScore: topEntry.value,
+        trendingScore: 0,
+        freshnessScore: _freshnessScore(m),
+        matchReason: matchReason,
+      );
+    }).toList();
+
+    return ActorBasedSection(
+      actorName: actorName,
+      movies: scored.take(limit).toList(),
+    );
+  }
 }
 
 class MovieBasedSection {
@@ -618,4 +666,11 @@ class MovieBasedSection {
   final String reason;
 
   MovieBasedSection({required this.seedMovie, required this.reason});
+}
+
+class ActorBasedSection {
+  final String actorName;
+  final List<ScoredMovie> movies;
+
+  ActorBasedSection({required this.actorName, required this.movies});
 }
