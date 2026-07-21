@@ -29,7 +29,6 @@ dependencies:
   chewie: ^1.8.5
   wakelock_plus: ^1.2.5
   ffmpeg_kit_flutter_new_https: ^2.1.0
-  path_provider: ^2.1.2
   permission_handler: ^11.3.0
   connectivity_plus: ^6.0.5
 
