@@ -201,27 +201,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     const SizedBox(height: 24),
                                     
                                     _buildLoginButton(authProvider),
-                                    
-                                    const SizedBox(height: 24),
-                                    
-                                    // Nút Bỏ qua (Dành cho Test nhanh)
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pushReplacement(
-                                          context,
-                                          MaterialPageRoute(builder: (context) => const HomeScreen()),
-                                        );
-                                      },
-                                      child: Text(
-                                        "BỎ QUA ĐĂNG NHẬP (TEST)",
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.4),
-                                          fontSize: 12,
-                                          letterSpacing: 1,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                    ),
                                   ],
                                 ),
                               ),
