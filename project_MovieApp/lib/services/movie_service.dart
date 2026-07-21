@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import '../constants/api_constants.dart';
 import '../models/movie.dart';
@@ -29,16 +30,36 @@ class MovieService {
     String url,
     CacheOptions cacheOptions,
   ) async {
-    final dio = (await _getDioClient()).dio;
-    final response = await dio.get(
-      url,
-      options: cacheOptions.toOptions(),
-    );
-    final raw = response.data;
-    if (raw is String) {
-      return jsonDecode(raw) as Map<String, dynamic>;
+    try {
+      final dio = (await _getDioClient()).dio;
+      final response = await dio.get(
+        url,
+        options: cacheOptions.toOptions(),
+      );
+
+      // Handle rate limiting (429) - return empty data instead of throwing
+      if (response.statusCode == 429) {
+        print('Rate limited (429) for URL: $url');
+        return {};
+      }
+
+      final raw = response.data;
+      if (raw is String) {
+        return jsonDecode(raw) as Map<String, dynamic>;
+      }
+      return (raw ?? {}) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      // Handle rate limiting in error case as well
+      if (e.response?.statusCode == 429) {
+        print('Rate limited (429) for URL: $url');
+        return {};
+      }
+      // Re-throw other errors
+      rethrow;
+    } catch (e) {
+      // Return empty map for other errors
+      return {};
     }
-    return (raw ?? {}) as Map<String, dynamic>;
   }
 
   Future<List<Movie>> fetchTrendingMovies() async {

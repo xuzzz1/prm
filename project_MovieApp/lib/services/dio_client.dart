@@ -51,10 +51,47 @@ class DioClient {
         headers: {
           'Accept': 'application/json',
         },
+        // Accept all status codes to handle 429 gracefully
+        validateStatus: (status) => true,
       ),
     );
 
     _dio.interceptors.add(_cacheInterceptor);
+
+    // Add retry interceptor for rate limiting (429) and server errors (5xx)
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException error, ErrorInterceptorHandler handler) async {
+          if (_isRetryableError(error)) {
+            final retryCount = _getRetryCount(error);
+            if (retryCount < 3) {
+              // Wait before retry (exponential backoff)
+              await Future.delayed(Duration(seconds: retryCount + 1));
+              
+              try {
+                final response = await _dio.fetch(error.requestOptions);
+                handler.resolve(response);
+                return;
+              } catch (e) {
+                // If retry fails, pass to next handler
+              }
+            }
+          }
+          handler.next(error);
+        },
+      ),
+    );
+  }
+
+  bool _isRetryableError(DioException error) {
+    final statusCode = error.response?.statusCode;
+    // Retry on rate limiting (429) or server errors (5xx)
+    return statusCode == 429 || (statusCode != null && statusCode >= 500);
+  }
+
+  int _getRetryCount(DioException error) {
+    final extra = error.requestOptions.extra;
+    return extra['retryCount'] ?? 0;
   }
 
   Dio get dio => _dio;

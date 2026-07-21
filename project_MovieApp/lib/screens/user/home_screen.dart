@@ -11,8 +11,9 @@ import '../../widgets/movie_card.dart';
 import '../../constants/api_constants.dart';
 import '../../themes/app_theme.dart';
 import '../../main.dart' show snackBarKey;
-import 'category_screen.dart'; 
+import 'category_screen.dart';
 import 'favorite_screen.dart';
+import 'news_screen.dart';
 import 'profile_screen.dart';
 import 'search_screen.dart';
 
@@ -48,8 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
         body: IndexedStack(
           index: _currentIndex,
           children: const [
-            _HomeTabBody(),         
+            _HomeTabBody(),
             CategoryScreen(),
+            NewsScreen(),
             FavoriteScreen(),
             ProfileScreen(),
           ],
@@ -61,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Home"),
             BottomNavigationBarItem(icon: Icon(Icons.category_rounded), label: "Category"),
+            BottomNavigationBarItem(icon: Icon(Icons.newspaper_rounded), label: "News"),
             BottomNavigationBarItem(icon: Icon(Icons.favorite_rounded), label: "Favorite"),
             BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profile"),
           ],

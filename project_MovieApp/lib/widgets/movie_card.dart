@@ -43,14 +43,32 @@ class MovieCard extends StatelessWidget {
                     tag: 'movie_${movie.slug}_${hashCode}',
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        ApiConstants.getImageUrl(movie.thumbUrl),
-                        fit: BoxFit.cover,
+                      child: SizedBox(
                         width: 120,
                         height: 180,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: AppTheme.secondaryAnthracite,
-                          child: const Icon(Icons.movie_rounded, color: Colors.white24),
+                        child: Image.network(
+                          ApiConstants.getImageUrl(movie.thumbUrl),
+                          fit: BoxFit.cover,
+                          width: 120,
+                          height: 180,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: AppTheme.secondaryAnthracite,
+                            child: const Center(
+                              child: Icon(Icons.movie_rounded, color: Colors.white24),
+                            ),
+                          ),
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              color: AppTheme.secondaryAnthracite,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: AppTheme.primaryAmber,
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
