@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
       scaffoldMessengerKey: snackBarKey,
       title: 'Movie App',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.darkTheme,
       home: const SplashScreen(),
     );
   }

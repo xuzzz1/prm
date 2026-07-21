@@ -13,19 +13,19 @@ class ApiConstants {
   // countries list
   static const String countries = '$baseUrl/quoc-gia';
 
-  // Image Proxy chính thức từ phimapi.com để chuyển đổi sang WEBP và fix lỗi hiển thị
+  // Only proxy relative paths (from old list endpoints). Absolute URLs
+  // (e.g. https://phimimg.com/upload/vod/...) are passed through directly.
   static String getImageUrl(String url) {
     if (url.isEmpty) return '';
-    
-    String fullImgUrl = url;
-    // Nếu API trả về đường dẫn tương đối (ví dụ: upload/vod/...), nối thêm domain phimimg.com
-    if (!url.startsWith('http')) {
-      String cleanPath = url.startsWith('/') ? url.substring(1) : url;
-      fullImgUrl = 'https://phimimg.com/$cleanPath';
+
+    if (url.startsWith('http')) {
+      // Already absolute — pass through as-is (no double-proxy)
+      return url;
     }
-    
-    // Sử dụng đúng API bạn cung cấp: https://phimapi.com/image.php?url={link_anh}
-    return 'https://phimapi.com/image.php?url=$fullImgUrl';
+
+    // Relative path — prepend domain then proxy for WEBP conversion
+    final fullUrl = 'https://phimimg.com/$url';
+    return 'https://phimapi.com/image.php?url=$fullUrl';
   }
 
   // movie detail
