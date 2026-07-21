@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/admin_provider.dart';
+import '../../providers/news_provider.dart';
 import '../../models/app_user.dart';
+import '../../models/news_item.dart';
 import '../auth/login_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
@@ -27,9 +29,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<AdminProvider>(context, listen: false).fetchAdminData();
+      Provider.of<NewsProvider>(context, listen: false).loadNews();
     });
   }
 
@@ -50,13 +53,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
           children: [
             _buildModernHeader(),
             _buildSlimTabBar(),
-            Expanded(
+              Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
                   _buildStatisticsTab(),
                   _buildUserManagementTab(),
                   _buildMovieManagementTab(),
+                  _buildNewsManagementTab(),
                 ],
               ),
             ),
@@ -183,6 +187,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
           Tab(text: "Thống kê"),
           Tab(text: "Người dùng"),
           Tab(text: "Phim"),
+          Tab(text: "Tin tức"),
         ],
       ),
     );
@@ -787,6 +792,273 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
             onPressed: () {
               adminProvider.deleteUser(user.uid);
               Navigator.pop(context);
+            },
+            child: const Text("XÓA", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 4: NEWS MANAGEMENT ---
+  Widget _buildNewsManagementTab() {
+    final newsProvider = Provider.of<NewsProvider>(context);
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(_screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionTitle("Danh sách tin tức"),
+              InkWell(
+                onTap: () => _showNewsDialog(null),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _accentColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.add_rounded, color: Colors.black, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        "Thêm tin",
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (newsProvider.newsList.isEmpty && !newsProvider.isLoading)
+            _buildEmptyState(Icons.newspaper_rounded, "Chưa có tin tức nào")
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: newsProvider.newsList.length,
+              itemBuilder: (context, index) {
+                final news = newsProvider.newsList[index];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      if (news.imageUrl.isNotEmpty)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            news.imageUrl,
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: _bgDark,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: _bgDark,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.newspaper_rounded, color: Colors.grey),
+                        ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              news.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              news.body,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          _buildIconButton(
+                            icon: Icons.edit_rounded,
+                            color: _accentColor,
+                            onTap: () => _showNewsDialog(news),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildIconButton(
+                            icon: Icons.delete_outline_rounded,
+                            color: Colors.redAccent,
+                            onTap: () => _showDeleteNewsDialog(news),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  void _showNewsDialog(NewsItem? existingNews) {
+    final titleController = TextEditingController(text: existingNews?.title ?? '');
+    final bodyController = TextEditingController(text: existingNews?.body ?? '');
+    final imageController = TextEditingController(text: existingNews?.imageUrl ?? '');
+    final newsProvider = Provider.of<NewsProvider>(context, listen: false);
+    final isEditing = existingNews != null;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isEditing ? "Sửa tin tức" : "Thêm tin tức",
+          style: const TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dialogTextField(titleController, "Tiêu đề"),
+              const SizedBox(height: 12),
+              _dialogTextField(imageController, "URL hình ảnh"),
+              const SizedBox(height: 12),
+              _dialogTextField(bodyController, "Nội dung", maxLines: 5),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text("HỦY", style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () async {
+              final title = titleController.text.trim();
+              final body = bodyController.text.trim();
+              final imageUrl = imageController.text.trim();
+
+              if (title.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Tiêu đề không được để trống"),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+                return;
+              }
+
+              if (isEditing) {
+                await newsProvider.updateNews(existingNews.copyWith(
+                  title: title,
+                  body: body,
+                  imageUrl: imageUrl,
+                ));
+              } else {
+                await newsProvider.addNews(NewsItem(
+                  id: '',
+                  title: title,
+                  body: body,
+                  imageUrl: imageUrl,
+                  createdAt: DateTime.now(),
+                ));
+              }
+
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: Text(
+              isEditing ? "LƯU" : "ĐĂNG",
+              style: TextStyle(color: _accentColor, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dialogTextField(TextEditingController controller, String hint, {int maxLines = 1}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+        filled: true,
+        fillColor: _bgDark,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  void _showDeleteNewsDialog(NewsItem news) {
+    final newsProvider = Provider.of<NewsProvider>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Xóa tin tức", style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: Text(
+          "Bạn có chắc muốn xóa tin \"${news.title}\"?",
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text("HỦY", style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () {
+              newsProvider.deleteNews(news.id);
+              Navigator.pop(dialogContext);
             },
             child: const Text("XÓA", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
