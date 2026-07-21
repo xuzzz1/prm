@@ -9,6 +9,8 @@ import 'providers/player_provider.dart';
 import 'providers/review_provider.dart';
 import 'providers/admin_provider.dart';
 import 'providers/news_provider.dart';
+import 'providers/download_provider.dart';
+import 'providers/connectivity_provider.dart';
 import 'screens/auth/splash_screen.dart';
 import 'themes/app_theme.dart';
 
@@ -30,6 +32,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ReviewProvider()),
         ChangeNotifierProvider(create: (_) => AdminProvider()),
         ChangeNotifierProvider(create: (_) => NewsProvider()),
+        ChangeNotifierProvider(create: (_) => DownloadProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
       ],
       child: const MyApp(),
     ),
@@ -44,10 +48,10 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: snackBarKey,
-      debugShowCheckedModeBanner: false,
       title: 'Movie App',
-      theme: AppTheme.darkTheme,
-      home: const SplashScreen(), // Thay đổi từ LoginScreen sang SplashScreen
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const SplashScreen(),
     );
   }
 }
