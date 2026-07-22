@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import '../../providers/auth_provider.dart';
 import '../user/home_screen.dart';
 import '../admin/admin_home_screen.dart';
@@ -17,6 +18,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  StreamSubscription<User?>? _authSubscription;
+  Timer? _timeoutTimer;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -38,24 +42,65 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.forward();
 
-    // Chờ 2.5 giây rồi kiểm tra điều hướng
-    Timer(const Duration(milliseconds: 2500), _checkAuthAndNavigate);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _listenForAuthState();
+    });
+  }
+
+  void _listenForAuthState() {
+    // Fallback timeout - if auth doesn't resolve in 5 seconds, proceed with current state
+    _timeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (!_hasNavigated && mounted) {
+        _checkAuthAndNavigate();
+      }
+    });
+
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      if (_hasNavigated || !mounted) return;
+      
+      if (user != null) {
+        // User is logged in - wait for role to be fetched
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        
+        // Poll for role until it's set (max 3 seconds)
+        _waitForRole(authProvider);
+      } else {
+        // No user - go to login immediately
+        _timeoutTimer?.cancel();
+        _checkAuthAndNavigate();
+      }
+    });
+  }
+
+  Future<void> _waitForRole(AuthProvider authProvider) async {
+    int attempts = 0;
+    const maxAttempts = 30; // 3 seconds max (30 * 100ms)
+    
+    while (authProvider.role == null && attempts < maxAttempts) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      attempts++;
+      
+      if (!mounted || _hasNavigated) return;
+    }
+    
+    if (!mounted || _hasNavigated) return;
+    _timeoutTimer?.cancel();
+    _checkAuthAndNavigate();
   }
 
   void _checkAuthAndNavigate() {
-    if (!mounted) return;
+    if (!mounted || _hasNavigated) return;
+    _hasNavigated = true;
     
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
     if (authProvider.currentUser != null) {
-      // Đã đăng nhập -> Kiểm tra Role
       if (authProvider.role == 'admin') {
         _navigateTo(const AdminHomeScreen());
       } else {
         _navigateTo(const HomeScreen());
       }
     } else {
-      // Chưa đăng nhập -> Vào màn hình Login
       _navigateTo(const LoginScreen());
     }
   }
@@ -75,6 +120,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
+    _timeoutTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
