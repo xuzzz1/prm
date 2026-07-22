@@ -47,21 +47,52 @@ class _MiniPlayerWidgetState extends State<MiniPlayerWidget> {
             height: size.height,
             child: Stack(
               children: [
-                // Close button
-                Positioned(
-                  top: topPadding + 8,
-                  left: 8,
-                  child: SafeArea(
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                      onPressed: () => player.closePlayer(),
-                    ),
-                  ),
-                ),
                 // Video fills screen
                 Positioned.fill(
                   top: topPadding,
                   child: player.videoWidget ?? const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                ),
+                // Back button overlay (on top of video)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: topPadding + 60,
+                  child: IgnorePointer(
+                    ignoring: false,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black54, Colors.transparent],
+                          stops: const [0.0, 1.0],
+                        ),
+                      ),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Row(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: IconButton(
+                                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                                onPressed: () => player.toggleExpand(false),
+                              ),
+                            ),
+                            const Spacer(),
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: IconButton(
+                                icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 28),
+                                onPressed: () => player.enterPictureInPicture(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

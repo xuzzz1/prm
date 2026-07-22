@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:android_pip/android_pip.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../models/movie.dart';
@@ -236,6 +237,10 @@ class PlayerProvider extends ChangeNotifier {
       ]);
     }
     notifyListeners();
+  }
+
+  void enterPictureInPicture() {
+    AndroidPIP().enterPipMode();
   }
 
   void closePlayer() {

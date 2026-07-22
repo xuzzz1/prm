@@ -160,7 +160,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     final topPadding = MediaQuery.of(context).padding.top;
 
     return PopScope(
-      onPopInvokedWithResult: (didPop, result) { if (didPop) context.read<PlayerProvider>().closePlayer(); },
       child: Scaffold(
         backgroundColor: AppTheme.darkAnthracite,
         body: Consumer<MovieProvider>(
