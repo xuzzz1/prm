@@ -23,9 +23,8 @@ class ApiConstants {
       return url;
     }
 
-    // Relative path — prepend domain then proxy for WEBP conversion
-    final fullUrl = 'https://phimimg.com/$url';
-    return 'https://phimapi.com/image.php?url=$fullUrl';
+    // Relative path — prepend domain and use directly (no proxy)
+    return 'https://phimimg.com/$url';
   }
 
   // movie detail
