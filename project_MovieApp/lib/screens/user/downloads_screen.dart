@@ -4,9 +4,9 @@ import 'package:provider/provider.dart';
 import '../../models/download.dart';
 import '../../models/movie.dart';
 import '../../providers/download_provider.dart';
+import '../../providers/player_provider.dart';
 import '../../constants/api_constants.dart';
 import '../../themes/app_theme.dart';
-import 'movie_detail_screen.dart';
 
 class DownloadsScreen extends StatelessWidget {
   const DownloadsScreen({super.key});
@@ -140,12 +140,20 @@ class DownloadsScreen extends StatelessWidget {
         children: [
           // Movie info header
           InkWell(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => MovieDetailScreen(movie: downloadedMovie.movie),
-              ),
-            ),
+            onTap: () {
+              if (downloadedMovie.episodes.isNotEmpty) {
+                _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first);
+              } else {
+                // No episodes downloaded, show message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Chưa có tập nào được tải.'),
+                    backgroundColor: Colors.orange,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -362,15 +370,21 @@ class DownloadsScreen extends StatelessWidget {
       return;
     }
 
-    // Navigate to movie detail and play
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MovieDetailScreen(movie: movie),
-      ),
-    ).then((_) {
-      // TODO: Implement local playback
-    });
+    // Find the episode index in the downloaded episodes list
+    final downloadProvider = context.read<DownloadProvider>();
+    final downloadedMovie = downloadProvider.downloadedMovies.firstWhere(
+      (dm) => dm.movie.slug == movie.slug,
+    );
+    final episodeIndex = downloadedMovie.episodes.indexWhere((e) => e.episodeName == episode.episodeName);
+
+    // Play the local video directly
+    final playerProvider = context.read<PlayerProvider>();
+    playerProvider.setLocalVideo(
+      movie,
+      episode.localPath,
+      episode.episodeName,
+      epIdx: episodeIndex >= 0 ? episodeIndex : 0,
+    );
   }
 
   void _showDeleteEpisodeDialog(BuildContext context, Movie movie, DownloadedEpisode episode) {

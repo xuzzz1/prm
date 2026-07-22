@@ -275,7 +275,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Widget _buildMovieHeader(Movie movie, List<EpisodeServer> episodes, PlayerProvider player) {
-    print("[MovieDetailScreen] episodes servers: ${episodes.map((s) => '${s.serverName} (${s.serverData.length} eps)').toList()}");
     final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
     String currentEpName = "1";
     if (isPlayingThis) currentEpName = player.currentEpisodeName ?? "1";

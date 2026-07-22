@@ -13,6 +13,7 @@ import 'providers/download_provider.dart';
 import 'providers/connectivity_provider.dart';
 import 'screens/auth/splash_screen.dart';
 import 'themes/app_theme.dart';
+import 'widgets/mini_player_widget.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> snackBarKey = GlobalKey<ScaffoldMessengerState>();
@@ -52,6 +53,14 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const SplashScreen(),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            const MiniPlayerWidget(),
+          ],
+        );
+      },
     );
   }
 }

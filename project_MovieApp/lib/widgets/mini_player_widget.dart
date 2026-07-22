@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../providers/player_provider.dart';
-import '../screens/user/movie_detail_screen.dart';
-import '../main.dart'; // navigatorKey
 
 class MiniPlayerWidget extends StatefulWidget {
   const MiniPlayerWidget({super.key});
@@ -41,6 +39,35 @@ class _MiniPlayerWidgetState extends State<MiniPlayerWidget> {
         double dragPercentage = (_dragY / (size.height * 0.4)).clamp(0.0, 1.0);
         if (!player.isExpanded) dragPercentage = 1.0;
 
+        // Fullscreen mode when expanded
+        if (player.isExpanded && !_isDragging) {
+          return Container(
+            color: Colors.black,
+            width: size.width,
+            height: size.height,
+            child: Stack(
+              children: [
+                // Close button
+                Positioned(
+                  top: topPadding + 8,
+                  left: 8,
+                  child: SafeArea(
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                      onPressed: () => player.closePlayer(),
+                    ),
+                  ),
+                ),
+                // Video fills screen
+                Positioned.fill(
+                  top: topPadding,
+                  child: player.videoWidget ?? const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                ),
+              ],
+            ),
+          );
+        }
+
         double currentWidth = size.width - (size.width - miniWidth) * dragPercentage;
         double currentHeight = (size.width / (16 / 9)) - ((size.width / (16 / 9)) - miniHeight) * dragPercentage;
         
@@ -74,9 +101,6 @@ class _MiniPlayerWidgetState extends State<MiniPlayerWidget> {
               if (_dragY > size.height * 0.15) {
                 player.toggleExpand(false);
                 setState(() => _dragY = 0);
-                if (navigatorKey.currentState?.canPop() ?? false) {
-                  navigatorKey.currentState?.pop();
-                }
               } else {
                 setState(() => _dragY = 0);
               }
@@ -85,9 +109,6 @@ class _MiniPlayerWidgetState extends State<MiniPlayerWidget> {
               // Chỉ bắt Tap khi đang là Mini Player
               onTap: player.isExpanded ? null : () {
                 player.toggleExpand(true);
-                navigatorKey.currentState?.push(
-                  MaterialPageRoute(builder: (context) => MovieDetailScreen(movie: player.currentMovie!)),
-                );
               },
               child: Material(
                 elevation: player.isExpanded ? 0 : 16,
