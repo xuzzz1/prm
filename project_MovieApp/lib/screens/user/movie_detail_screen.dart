@@ -123,6 +123,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     final downloadedEpisode = downloadProvider.getDownloadedEpisode(movieForPlayer.slug, episode.name);
     
     if (downloadedEpisode != null) {
+      // Get all downloaded episodes for this movie
+      final downloadedMovie = downloadProvider.downloadedMovies.where((dm) => dm.movie.slug == movieForPlayer.slug).firstOrNull;
+      
       // Play from local file
       context.read<PlayerProvider>().setLocalVideo(
         movieForPlayer,
@@ -131,6 +134,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         epIdx: epIdx,
         svIdx: svIdx,
         startAt: startAt,
+        downloadedEpisodes: downloadedMovie?.episodes,
       );
     } else {
       // Play from network
