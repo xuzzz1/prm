@@ -19,7 +19,8 @@ class AuthProvider extends ChangeNotifier {
     _auth.authStateChanges().listen((User? user) async {
       _user = user;
       if (user != null) {
-        await fetchUserRole(user.uid);
+        // Fetch role without awaiting to avoid blocking
+        fetchUserRole(user.uid);
       } else {
         _role = null;
       }
@@ -27,6 +28,7 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
+  // Keep fetchUserRole public for login use
   Future<void> fetchUserRole(String uid) async {
     // Nếu là tài khoản admin đặc biệt thì gán role admin luôn
     if (_user?.email == 'admin@gmail.com') {
