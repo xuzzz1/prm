@@ -275,6 +275,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Widget _buildMovieHeader(Movie movie, List<EpisodeServer> episodes, PlayerProvider player) {
+    print("[MovieDetailScreen] episodes servers: ${episodes.map((s) => '${s.serverName} (${s.serverData.length} eps)').toList()}");
     final bool isPlayingThis = player.currentMovie?.slug == widget.movie.slug;
     String currentEpName = "1";
     if (isPlayingThis) currentEpName = player.currentEpisodeName ?? "1";
@@ -820,37 +821,46 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Widget _buildReviewsTab(ReviewProvider reviewProvider) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final user = authProvider.currentUser;
-    final bool hasReviewed = user != null && reviewProvider.reviews.any((r) => r.userId == user.uid);
-
     return Column(
       children: [
-        if (user != null && !hasReviewed)
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Container(
-              decoration: BoxDecoration(gradient: const LinearGradient(colors: [AppTheme.primaryAmber, AppTheme.secondaryOrange]), borderRadius: BorderRadius.circular(16)),
-              child: ElevatedButton(
-                onPressed: () => _showReviewDialog(null),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, minimumSize: const Size(double.infinity, 50)),
-                child: const Text("Viết đánh giá của bạn", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ),
+        Consumer<AuthProvider>(
+          builder: (context, authProvider, _) {
+            final user = authProvider.currentUser;
+            final hasReviewed = user != null && reviewProvider.reviews.any((r) => r.userId == user.uid);
+            if (user != null && !hasReviewed) {
+              return Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Container(
+                  decoration: BoxDecoration(gradient: const LinearGradient(colors: [AppTheme.primaryAmber, AppTheme.secondaryOrange]), borderRadius: BorderRadius.circular(16)),
+                  child: ElevatedButton(
+                    onPressed: () => _showReviewDialog(null),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, minimumSize: const Size(double.infinity, 50)),
+                    child: const Text("Viết đánh giá của bạn", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
         Expanded(
-          child: reviewProvider.isLoading
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber))
-              : reviewProvider.reviews.isEmpty
-                  ? const Center(child: Text("Chưa có đánh giá nào", style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: reviewProvider.reviews.length,
-                      itemBuilder: (context, index) {
-                        final review = reviewProvider.reviews[index];
-                        return _buildReviewItem(review, user != null && review.userId == user.uid);
-                      },
-                    ),
+          child: Consumer<AuthProvider>(
+            builder: (context, authProvider, _) {
+              final user = authProvider.currentUser;
+              return reviewProvider.isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryAmber))
+                  : reviewProvider.reviews.isEmpty
+                      ? const Center(child: Text("Chưa có đánh giá nào", style: TextStyle(color: Colors.grey)))
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          itemCount: reviewProvider.reviews.length,
+                          itemBuilder: (context, index) {
+                            final review = reviewProvider.reviews[index];
+                            return _buildReviewItem(review, user != null && review.userId == user.uid);
+                          },
+                        );
+            },
+          ),
         ),
       ],
     );
@@ -1066,9 +1076,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: () async {
+                print("[DEBUG] Submit button tapped. comment='${commentController.text}', rating=$rating");
                 final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                if (authProvider.currentUser == null) return;
-                await Provider.of<ReviewProvider>(context, listen: false).addOrUpdateReview(movieSlug: widget.movie.slug, rating: rating, comment: commentController.text, user: authProvider.currentUser!, movie: _movieProvider?.movieDetail ?? widget.movie);
+                print("[DEBUG] currentUser = ${authProvider.currentUser?.uid}");
+                if (authProvider.currentUser == null) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Vui lòng đăng nhập để gửi đánh giá.")));
+                  return;
+                }
+                print("[DEBUG] Calling addOrUpdateReview...");
+                try {
+                  await Provider.of<ReviewProvider>(context, listen: false).addOrUpdateReview(movieSlug: widget.movie.slug, rating: rating, comment: commentController.text, user: authProvider.currentUser!, movie: _movieProvider?.movieDetail ?? widget.movie);
+                  print("[DEBUG] addOrUpdateReview succeeded");
+                } catch (e, st) {
+                  print("[DEBUG] addOrUpdateReview FAILED: $e\n$st");
+                }
                 if (!mounted) return; Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),

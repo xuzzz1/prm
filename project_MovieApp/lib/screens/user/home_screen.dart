@@ -177,12 +177,12 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     _homePool = pool;
     _loadRecommendations();
     _loadMovieBasedSection();
-    _loadActorBasedSection();
-
     try {
       final allMovies = await movieService.fetchMoviesForHomeEnriched(pool: pool);
       if (!mounted) return;
       setState(() => _homePool = allMovies);
+      // Now reload actor-based section with enriched data
+      await _loadActorBasedSection();
     } catch (_) {
       // Enrichment is best-effort; keep pool from Phase 1
     }
@@ -204,7 +204,6 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   Future<void> _loadActorBasedSection() async {
     if (_homePool.isEmpty) return;
     final actorSection = await recommendationService.getTopActorSection(_homePool, limit: 12);
-    print('[DEBUG] ActorBasedSection: $actorSection');
     if (!mounted) return;
     setState(() {
       _actorBasedSection = actorSection;

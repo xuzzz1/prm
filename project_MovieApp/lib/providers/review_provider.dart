@@ -67,6 +67,7 @@ class ReviewProvider extends ChangeNotifier {
     required User user,
     Movie? movie,
   }) async {
+    print("[ReviewProvider] addOrUpdateReview called. slug=$movieSlug, rating=$rating, comment='$comment', userId=${user.uid}");
     try {
       final review = Review(
         userId: user.uid,
@@ -77,12 +78,15 @@ class ReviewProvider extends ChangeNotifier {
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
 
+      print("[ReviewProvider] Writing to Firebase: reviews/$movieSlug/${user.uid}");
       await _database.ref('reviews/$movieSlug/${user.uid}').set(review.toJson());
+      print("[ReviewProvider] Write succeeded");
 
       if (movie != null) {
         _recommendationService.updateAffinityFromRating(movie, rating);
       }
-    } catch (e) {
+    } catch (e, st) {
+      print("[ReviewProvider] addOrUpdateReview FAILED: $e\n$st");
       rethrow;
     }
   }
