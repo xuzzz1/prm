@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../models/movie.dart';
+import '../models/download.dart';
 import '../services/recommendation_service.dart';
 import 'movie_provider.dart';
 
@@ -27,6 +28,9 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLocalPlayback = false;
   String? _localFilePath;
 
+  // Downloaded episodes info (for local playback)
+  List<DownloadedEpisode>? _downloadedEpisodes;
+
   Timer? _progressTimer;
   MovieProvider? _movieProvider;
   final RecommendationService _recommendationService = RecommendationService();
@@ -46,6 +50,7 @@ class PlayerProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isLocalPlayback => _isLocalPlayback;
   String? get localFilePath => _localFilePath;
+  List<DownloadedEpisode>? get downloadedEpisodes => _downloadedEpisodes;
 
   void setMovieProvider(MovieProvider provider) {
     _movieProvider = provider;
@@ -116,7 +121,7 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setLocalVideo(Movie movie, String localPath, String episodeName, {int epIdx = 0, int svIdx = 0, Duration? startAt}) async {
+  Future<void> setLocalVideo(Movie movie, String localPath, String episodeName, {int epIdx = 0, int svIdx = 0, Duration? startAt, List<DownloadedEpisode>? downloadedEpisodes}) async {
     // Check if file exists
     final file = File(localPath);
     if (!file.existsSync()) {
@@ -124,6 +129,8 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    _downloadedEpisodes = downloadedEpisodes;
 
     if (_currentMovie?.slug == movie.slug && _currentEpisodeName == episodeName && _isLocalPlayback && _localFilePath == localPath) {
       _isExpanded = true;
@@ -251,6 +258,7 @@ class PlayerProvider extends ChangeNotifier {
     _isExpanded = false;
     _isLocalPlayback = false;
     _localFilePath = null;
+    _downloadedEpisodes = null;
 
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,

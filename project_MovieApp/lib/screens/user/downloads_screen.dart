@@ -142,7 +142,7 @@ class DownloadsScreen extends StatelessWidget {
           InkWell(
             onTap: () {
               if (downloadedMovie.episodes.isNotEmpty) {
-                _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first);
+                _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first, downloadedMovie.episodes);
               } else {
                 // No episodes downloaded, show message
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -255,7 +255,7 @@ class DownloadsScreen extends StatelessWidget {
             // Single episode - play directly
             const Divider(color: Colors.white10, height: 1),
             InkWell(
-              onTap: () => _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first),
+              onTap: () => _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first, downloadedMovie.episodes),
               child: Container(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -310,7 +310,7 @@ class DownloadsScreen extends StatelessWidget {
                 onPressed: () {
                   // TODO: Play first episode
                   if (downloadedMovie.episodes.isNotEmpty) {
-                    _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first);
+                    _playDownloadedEpisode(context, downloadedMovie.movie, downloadedMovie.episodes.first, downloadedMovie.episodes);
                   }
                 },
                 icon: const Icon(Icons.play_circle_outline, size: 18, color: AppTheme.primaryAmber),
@@ -325,7 +325,7 @@ class DownloadsScreen extends StatelessWidget {
             runSpacing: 8,
             children: downloadedMovie.episodes.map((episode) {
               return InkWell(
-                onTap: () => _playDownloadedEpisode(context, downloadedMovie.movie, episode),
+                onTap: () => _playDownloadedEpisode(context, downloadedMovie.movie, episode, downloadedMovie.episodes),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -356,7 +356,7 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  void _playDownloadedEpisode(BuildContext context, Movie movie, DownloadedEpisode episode) {
+  void _playDownloadedEpisode(BuildContext context, Movie movie, DownloadedEpisode episode, List<DownloadedEpisode> allEpisodes) {
     // Check if file exists
     final file = File(episode.localPath);
     if (!file.existsSync()) {
@@ -371,11 +371,7 @@ class DownloadsScreen extends StatelessWidget {
     }
 
     // Find the episode index in the downloaded episodes list
-    final downloadProvider = context.read<DownloadProvider>();
-    final downloadedMovie = downloadProvider.downloadedMovies.firstWhere(
-      (dm) => dm.movie.slug == movie.slug,
-    );
-    final episodeIndex = downloadedMovie.episodes.indexWhere((e) => e.episodeName == episode.episodeName);
+    final episodeIndex = allEpisodes.indexWhere((e) => e.episodeName == episode.episodeName);
 
     // Play the local video directly
     final playerProvider = context.read<PlayerProvider>();
@@ -384,6 +380,7 @@ class DownloadsScreen extends StatelessWidget {
       episode.localPath,
       episode.episodeName,
       epIdx: episodeIndex >= 0 ? episodeIndex : 0,
+      downloadedEpisodes: allEpisodes,
     );
   }
 
