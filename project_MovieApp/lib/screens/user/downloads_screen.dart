@@ -90,6 +90,9 @@ class DownloadsScreen extends StatelessWidget {
               ],
               // Completed downloads section
               if (hasCompleted) ...[
+                // Storage info card
+                _buildStorageInfoCard(downloadProvider),
+                const SizedBox(height: 16),
                 if (hasActiveOrPending)
                   _buildSectionHeader('Đã tải xong', Icons.download_done_rounded, Colors.green),
                 if (!hasActiveOrPending)
@@ -122,6 +125,47 @@ class DownloadsScreen extends StatelessWidget {
             'Tải phim để xem offline',
             style: TextStyle(color: Colors.grey, fontSize: 14),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStorageInfoCard(DownloadProvider provider) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.secondaryAnthracite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryAmber.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.download_done_rounded, color: AppTheme.primaryAmber, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${provider.downloadedMovies.length} phim',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Dung lượng: ${provider.formattedTotalStorage}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
         ],
       ),
     );

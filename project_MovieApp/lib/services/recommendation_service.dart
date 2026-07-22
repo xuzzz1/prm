@@ -612,6 +612,20 @@ class RecommendationService {
     );
   }
 
+  /// Returns the best country slug and its score from user preferences.
+  /// Returns null if no country affinity exists.
+  Future<MapEntry<String, double>?> getTopCountry() async {
+    final prefs = await currentPrefs;
+    if (prefs == null || prefs.countryAffinity.isEmpty) return null;
+
+    final topEntry = prefs.countryAffinity.entries.reduce(
+      (a, b) => a.value > b.value ? a : b,
+    );
+    if (topEntry.value < 0.1) return null;
+
+    return MapEntry(topEntry.key, topEntry.value);
+  }
+
   /// Returns the best "Phim của [Diễn Viên]" section.
   /// Picks the actor with the highest affinity, finds movies from that actor
   /// in the pool, and returns up to [limit] scored results.

@@ -98,6 +98,9 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
   MovieBasedSection? _movieBasedSection;
   List<ScoredMovie> _movieBasedMovies = [];
   ActorBasedSection? _actorBasedSection;
+  String? _topCountrySlug;
+  String? _topCountryLabel;
+  List<Movie> _topCountryMovies = [];
   int _refreshCounter = 0;
 
   /// Shared pool populated by Phase 2 enrichment. Used by recommendations and
@@ -177,6 +180,7 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     _homePool = pool;
     _loadRecommendations();
     _loadMovieBasedSection();
+    _loadCountryBasedSection();
     try {
       final allMovies = await movieService.fetchMoviesForHomeEnriched(pool: pool);
       if (!mounted) return;
@@ -210,6 +214,77 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
     });
   }
 
+  Future<void> _loadCountryBasedSection() async {
+    final topCountry = await recommendationService.getTopCountry();
+    if (topCountry == null) return;
+
+    final countrySlug = topCountry.key;
+    final countryLabel = _formatCountry(topCountry.key);
+
+    try {
+      final result = await movieService.fetchMoviesByCountry(countrySlug, 1);
+      if (!mounted) return;
+
+      final prefs = await recommendationService.currentPrefs;
+      final watchedSlugs = prefs?.watchedSlugs ?? [];
+      final movies = result['movies'] as List<Movie>;
+      final filtered = movies
+          .where((m) => !watchedSlugs.contains(m.slug))
+          .take(12)
+          .toList();
+
+      setState(() {
+        _topCountrySlug = countrySlug;
+        _topCountryLabel = countryLabel;
+        _topCountryMovies = filtered;
+      });
+    } catch (_) {
+      // Best-effort
+    }
+  }
+
+  static const Map<String, String> countryNameMap = {
+    'au-my': 'Âu Mỹ',
+    'trung-quoc': 'Trung Quốc',
+    'han-quoc': 'Hàn Quốc',
+    'my': 'Mỹ',
+    'anh': 'Anh',
+    'nhat-ban': 'Nhật Bản',
+    'thai-lan': 'Thái Lan',
+    'hong-kong': 'Hồng Kông',
+    'phap': 'Pháp',
+    'duc': 'Đức',
+    'india': 'Ấn Độ',
+    'quoc-gia-khac': 'Quốc Gia Khác',
+    'dong-tay-bang': 'Đông Tây Bang',
+    'ha-lan': 'Hà Lan',
+    'y': 'Ý',
+    'tay-ban-nha': 'Tây Ban Nha',
+    'nga': 'Nga',
+    'uc': 'Úc',
+    'canada': 'Canada',
+    'brazil': 'Brazil',
+    'malaysia': 'Malaysia',
+    'indo': 'Indonesia',
+    'hanh-dong': 'Hành Động',
+    'tinh-cam': 'Tình Cảm',
+    'hai-huoc': 'Hài Hước',
+    'vien-tuong': 'Viễn Tưởng',
+    'kinh-di': 'Kinh Dị',
+    'chinh-kich': 'Chính Kịch',
+    'co-trang': 'Cổ Trang',
+    'hoat-hinh': 'Hoạt Hình',
+    'phim-bo': 'Phim Bộ',
+    'phim-le': 'Phim Lẻ',
+    'phim-chieu-rap': 'Phim Chiếu Rạp',
+    'phim-nuoc-ngoai': 'Phim Nước Ngoài',
+  };
+
+  String _formatCountry(String slug) {
+    return countryNameMap[slug] ??
+        slug.split('-').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+  }
+
   Future<void> _refreshRecommendations() async {
     recommendationService.invalidateCache();
     final prefs = await recommendationService.currentPrefs;
@@ -224,6 +299,9 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
       }),
       Future(() async {
         await _loadActorBasedSection();
+      }),
+      Future(() async {
+        await _loadCountryBasedSection();
       }),
     ]);
   }
@@ -320,6 +398,11 @@ class _HomeTabBodyState extends State<_HomeTabBody> with AutomaticKeepAliveClien
                     SizedBox(height: _debugActorSection(_actorBasedSection!)),
                     _buildSectionTitle('Phim của ${_actorBasedSection!.actorName}', subtitle: 'Vì bạn thích diễn viên này'),
                     _buildMovieBasedHorizontalList(_actorBasedSection!.movies),
+                  ],
+                  if (_topCountryMovies.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    _buildSectionTitle('Phim ${_topCountryLabel ?? ''}', subtitle: 'Vì bạn thích phim quốc gia này'),
+                    _buildMovieHorizontalList(_topCountryMovies),
                   ],
                   const SizedBox(height: 24),
                   _buildSectionTitle("Recently Updated"),

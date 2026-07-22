@@ -1187,10 +1187,10 @@ class _EpisodeChip extends StatelessWidget {
           Positioned(
             top: 4,
             right: 4,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+            child: Icon(
+              Icons.download_done_rounded,
+              size: 14,
+              color: Colors.green,
             ),
           ),
         if (isDownloading)

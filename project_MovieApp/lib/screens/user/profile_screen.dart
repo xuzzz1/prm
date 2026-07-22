@@ -1,5 +1,6 @@
 // lib/screens/user/profile_screen.dart
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../auth/login_screen.dart';
@@ -8,10 +9,12 @@ import 'change_password_screen.dart';
 import 'history_screen.dart';
 import 'downloads_screen.dart';
 import '../../models/movie.dart';
+import '../../models/download.dart';
 import '../../constants/api_constants.dart';
 import 'movie_detail_screen.dart';
 import '../../providers/movie_provider.dart';
 import '../../providers/download_provider.dart';
+import '../../providers/player_provider.dart';
 import '../../themes/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -99,13 +102,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return Consumer<DownloadProvider>(
       builder: (context, downloadProvider, _) {
         if (downloadProvider.downloadedMovies.isEmpty) return const SizedBox();
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text("PHIM ĐÃ TẢI", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1)),
@@ -115,121 +117,89 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              // Storage info
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.secondaryAnthracite,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryAmber.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.download_done_rounded, color: AppTheme.primaryAmber, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${downloadProvider.downloadedMovies.length} phim',
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Dung lượng: ${downloadProvider.formattedTotalStorage}',
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, color: Colors.grey),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 160,
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                scrollDirection: Axis.horizontal,
+                itemCount: downloadProvider.downloadedMovies.length > 4 ? 4 : downloadProvider.downloadedMovies.length,
+                itemBuilder: (context, index) => _buildDownloadCard(downloadProvider.downloadedMovies[index]),
               ),
-              const SizedBox(height: 12),
-              // Quick access to downloaded movies
-              SizedBox(
-                height: 120,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: downloadProvider.downloadedMovies.length > 4 ? 4 : downloadProvider.downloadedMovies.length,
-                  itemBuilder: (context, index) {
-                    final downloadedMovie = downloadProvider.downloadedMovies[index];
-                    return GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: downloadedMovie.movie))),
-                      child: Container(
-                        width: 100,
-                        margin: const EdgeInsets.only(right: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.network(
-                                    ApiConstants.getImageUrl(downloadedMovie.movie.posterUrl.isNotEmpty 
-                                        ? downloadedMovie.movie.posterUrl 
-                                        : downloadedMovie.movie.thumbUrl),
-                                    width: 100,
-                                    height: 70,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 100,
-                                      height: 70,
-                                      color: AppTheme.darkAnthracite,
-                                      child: const Icon(Icons.movie, color: Colors.grey),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  bottom: 4,
-                                  right: 4,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.8),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      '${downloadedMovie.episodeCount} tập',
-                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              downloadedMovie.movie.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
-                            ),
-                            Text(
-                              downloadedMovie.formattedTotalSize,
-                              style: const TextStyle(color: Colors.grey, fontSize: 10),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildDownloadCard(DownloadedMovie downloadedMovie) {
+    return GestureDetector(
+      onTap: () {
+        if (downloadedMovie.episodes.isNotEmpty) {
+          final file = File(downloadedMovie.episodes.first.localPath);
+          if (file.existsSync()) {
+            final playerProvider = context.read<PlayerProvider>();
+            playerProvider.setLocalVideo(
+              downloadedMovie.movie,
+              downloadedMovie.episodes.first.localPath,
+              downloadedMovie.episodes.first.episodeName,
+              epIdx: 0,
+              downloadedEpisodes: downloadedMovie.episodes,
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File không tồn tại. Vui lòng tải lại.'),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chưa có tập nào được tải.'),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      child: Container(
+        width: 200,
+        margin: const EdgeInsets.only(right: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(
+                  ApiConstants.getImageUrl(downloadedMovie.movie.posterUrl.isNotEmpty
+                      ? downloadedMovie.movie.posterUrl
+                      : downloadedMovie.movie.thumbUrl),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(color: AppTheme.secondaryAnthracite),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              downloadedMovie.movie.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            Text(
+              '${downloadedMovie.episodeCount} tập',
+              style: const TextStyle(color: Colors.grey, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
