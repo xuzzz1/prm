@@ -136,37 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   Widget _buildDownloadCard(DownloadedMovie downloadedMovie) {
     return GestureDetector(
-      onTap: () {
-        if (downloadedMovie.episodes.isNotEmpty) {
-          final file = File(downloadedMovie.episodes.first.localPath);
-          if (file.existsSync()) {
-            final playerProvider = context.read<PlayerProvider>();
-            playerProvider.setLocalVideo(
-              downloadedMovie.movie,
-              downloadedMovie.episodes.first.localPath,
-              downloadedMovie.episodes.first.episodeName,
-              epIdx: 0,
-              downloadedEpisodes: downloadedMovie.episodes,
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('File không tồn tại. Vui lòng tải lại.'),
-                backgroundColor: Colors.redAccent,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Chưa có tập nào được tải.'),
-              backgroundColor: Colors.orange,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      },
+      onTap: () => _showDownloadedEpisodesSheet(context, downloadedMovie),
       child: Container(
         width: 200,
         margin: const EdgeInsets.only(right: 16),
@@ -200,6 +170,17 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ],
         ),
       ),
+    );
+  }
+
+  void _showDownloadedEpisodesSheet(BuildContext context, DownloadedMovie downloadedMovie) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.secondaryAnthracite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _DownloadedEpisodesSheet(downloadedMovie: downloadedMovie),
     );
   }
 
@@ -314,6 +295,172 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           if (context.mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
         },
         child: const Text("ĐĂNG XUẤT", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, letterSpacing: 1)),
+      ),
+    );
+  }
+}
+
+class _DownloadedEpisodesSheet extends StatelessWidget {
+  final DownloadedMovie downloadedMovie;
+
+  const _DownloadedEpisodesSheet({required this.downloadedMovie});
+
+  void _playEpisode(BuildContext context, int index) {
+    final episode = downloadedMovie.episodes[index];
+    final file = File(episode.localPath);
+    if (file.existsSync()) {
+      final playerProvider = context.read<PlayerProvider>();
+      playerProvider.setLocalVideo(
+        downloadedMovie.movie,
+        episode.localPath,
+        episode.episodeName,
+        epIdx: index,
+        downloadedEpisodes: downloadedMovie.episodes,
+      );
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('File không tồn tại. Vui lòng tải lại.'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    ApiConstants.getImageUrl(downloadedMovie.movie.posterUrl.isNotEmpty
+                        ? downloadedMovie.movie.posterUrl
+                        : downloadedMovie.movie.thumbUrl),
+                    width: 80,
+                    height: 110,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 80,
+                      height: 110,
+                      color: AppTheme.darkAnthracite,
+                      child: const Icon(Icons.movie, color: Colors.grey),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        downloadedMovie.movie.name,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${downloadedMovie.episodeCount} tập • ${downloadedMovie.formattedTotalSize}',
+                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Divider(color: Colors.white10, height: 1),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'DANH SÁCH TẬP',
+                style: TextStyle(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: downloadedMovie.episodes.length,
+              itemBuilder: (context, index) {
+                final episode = downloadedMovie.episodes[index];
+                return InkWell(
+                  onTap: () => _playEpisode(context, index),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryAmber,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                episode.episodeName,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                episode.formattedSize,
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.play_circle_outline_rounded, color: AppTheme.primaryAmber, size: 28),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
       ),
     );
   }
